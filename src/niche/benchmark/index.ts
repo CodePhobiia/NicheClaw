@@ -41,6 +41,37 @@ export {
   type BenchmarkInvalidationReasonCode,
 } from "./invalidation.js";
 export {
+  computeCalibrationMetrics,
+  requiredSmeSampleCount,
+  type CalibrationExample,
+  type CalibrationMetrics,
+  type CalibrationOutcome,
+} from "./calibration.js";
+export {
+  computeBenchmarkFixturePackHash,
+  computeBenchmarkSuiteHash,
+  computeEnvironmentSnapshotHash,
+  computeStableContentHash,
+} from "./fixture-versioning.js";
+export {
+  createArbitrationArtifact,
+  createBenchmarkFixtureMetadata,
+  createGraderArtifact,
+  createGraderSet,
+  getArbitrationArtifact,
+  getBenchmarkFixtureMetadata,
+  getGraderArtifact,
+  getGraderSet,
+  listArbitrationArtifacts,
+  listBenchmarkFixtureMetadata,
+  listGraderArtifacts,
+  listGraderSets,
+  BenchmarkFixtureMetadataSchema,
+  GraderSetRecordSchema,
+  type BenchmarkFixtureMetadata,
+  type GraderSetRecord,
+} from "./grader-registry.js";
+export {
   bootstrapConfidenceInterval,
   buildPairedDeltaSummary,
   computeMean,
