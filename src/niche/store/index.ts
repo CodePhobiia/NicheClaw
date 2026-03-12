@@ -5,6 +5,12 @@ export {
   computeArtifactContentHash,
 } from "./artifact-registry.js";
 export {
+  getChildrenForArtifact,
+  getParentsForArtifact,
+  listLineageEdges,
+  writeLineageEdges,
+} from "./lineage-store.js";
+export {
   getBaselineManifest,
   getCandidateManifest,
   getSourceAccessManifest,
@@ -27,3 +33,11 @@ export {
   type ManifestStoreKind,
   type NicheStoreRoots,
 } from "./paths.js";
+export { createReplayBundle, getReplayBundle } from "./replay-bundle.js";
+export {
+  appendRunTrace,
+  getRunTrace,
+  listRunTraces,
+  queryRunTraces,
+  type RunTraceQuery,
+} from "./trace-store.js";
