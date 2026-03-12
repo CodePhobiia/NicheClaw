@@ -22,6 +22,11 @@ import {
   sanitizeToolResult,
 } from "./pi-embedded-subscribe.tools.js";
 import { inferToolMetaFromArgs } from "./pi-embedded-utils.js";
+import {
+  recordToolExecutionResult,
+  recordToolExecutionStart,
+  recordToolExecutionUpdate,
+} from "../niche/runtime/run-trace-capture.js";
 import { consumeAdjustedParamsForToolCall } from "./pi-tools.before-tool-call.js";
 import { buildToolMutationState, isSameToolMutationAction } from "./tool-mutation.js";
 import { normalizeToolName } from "./tool-policy.js";
@@ -333,6 +338,13 @@ export async function handleToolExecutionStart(
 
   const meta = extendExecMeta(toolName, args, inferToolMetaFromArgs(toolName, args));
   ctx.state.toolMetaById.set(toolCallId, buildToolCallSummary(toolName, args, meta));
+  recordToolExecutionStart({
+    runId,
+    toolCallId,
+    toolName,
+    meta,
+    args,
+  });
   ctx.log.debug(
     `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
@@ -416,6 +428,12 @@ export function handleToolExecutionUpdate(
       name: toolName,
       toolCallId,
     },
+  });
+  recordToolExecutionUpdate({
+    runId: ctx.params.runId,
+    toolCallId,
+    toolName,
+    partialResult: sanitized,
   });
 }
 
@@ -544,6 +562,14 @@ export async function handleToolExecutionEnd(
   ctx.log.debug(
     `embedded run tool end: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
+  recordToolExecutionResult({
+    runId,
+    toolCallId,
+    toolName,
+    meta,
+    result: sanitizedResult,
+    isError: isToolError,
+  });
 
   await emitToolResultOutput({ ctx, toolName, meta, isToolError, result, sanitizedResult });
 

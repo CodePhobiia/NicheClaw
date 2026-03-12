@@ -3,6 +3,7 @@ import type { SessionState } from "../logging/diagnostic-session-state.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
+import { mediateNicheToolCall } from "../niche/runtime/action-mediator.js";
 import { normalizeToolName } from "./tool-policy.js";
 import type { AnyAgentTool } from "./tools/common.js";
 
@@ -95,7 +96,7 @@ export async function runBeforeToolCallHook(args: {
   ctx?: HookContext;
 }): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
-  const params = args.params;
+  let params = args.params;
 
   if (args.ctx?.sessionKey) {
     const { getDiagnosticSessionState, logToolLoopAction, detectToolCallLoop, recordToolCall } =
@@ -145,6 +146,22 @@ export async function runBeforeToolCallHook(args: {
     }
 
     recordToolCall(sessionState, toolName, params, args.toolCallId, args.ctx.loopDetection);
+  }
+
+  const mediation = mediateNicheToolCall({
+    runId: args.ctx?.runId,
+    toolCallId: args.toolCallId,
+    toolName,
+    rawParams: params,
+  });
+  if (mediation?.blocked) {
+    return {
+      blocked: true,
+      reason: mediation.reason ?? "Tool call blocked by NicheClaw action mediator.",
+    };
+  }
+  if (mediation) {
+    params = mediation.params;
   }
 
   const hookRunner = getGlobalHookRunner();

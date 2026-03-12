@@ -134,6 +134,7 @@ import {
 } from "./compaction-timeout.js";
 import { pruneProcessedHistoryImages } from "./history-image-prune.js";
 import { detectAndLoadPromptImages } from "./images.js";
+import { attachNicheRunAttemptMetadata } from "../../../niche/runtime/run-trace-capture.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 
 type PromptBuildHookRunner = {
@@ -1512,6 +1513,15 @@ export async function runEmbeddedAttempt(
           );
         });
       };
+
+      attachNicheRunAttemptMetadata({
+        runId: params.runId,
+        sessionId: params.sessionId,
+        sessionKey: sandboxSessionKey,
+        agentId: sessionAgentId,
+        provider: params.provider,
+        modelId: params.modelId,
+      });
 
       const subscription = subscribeEmbeddedPiSession({
         session: activeSession,
