@@ -39,13 +39,20 @@ function toFinding(params: {
   message: string;
   remediation?: string;
 }): VerifierFinding {
+  const normalizedSeverity =
+    params.severity === "low"
+      ? "warning"
+      : params.severity === "warning"
+        ? "warning"
+        : params.severity;
+
   return {
     finding_id: params.id,
     category: params.category,
-    severity: params.severity === "warning" ? "warning" : params.severity,
+    severity: normalizedSeverity,
     blocking:
       params.blocking ??
-      (params.severity === "high" || params.severity === "critical"),
+      normalizedSeverity === "high",
     message: params.message,
     evidence_source_ids: [],
     remediation: params.remediation,
