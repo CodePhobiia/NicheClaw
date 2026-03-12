@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
   EvidenceBundleRefSchema,
@@ -12,6 +12,7 @@ import {
   ReplayabilityStatusSchema,
   TimestampString,
 } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "./paths.js";
 
 export const ReplayBundleEnvironmentSnapshotSchema = Type.Object(
@@ -89,7 +90,10 @@ export function getReplayBundle(
   replayBundleId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): ReplayBundleRecord | null {
-  const raw = loadJsonFile(resolveReplayBundlePath(replayBundleId, env));
+  const raw = readJsonFileStrict(
+    resolveReplayBundlePath(replayBundleId, env),
+    `replay bundle ${replayBundleId}`,
+  );
   if (raw === undefined) {
     return null;
   }

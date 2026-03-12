@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
   ArtifactRefSchema,
@@ -10,6 +10,7 @@ import {
   type ArtifactRef,
   type ArtifactRightsState,
 } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   resolveArtifactsStoreRoot,
   resolveArtifactStorePath,
@@ -112,7 +113,7 @@ function walkArtifactFiles(root: string): string[] {
 }
 
 function readStoredArtifact(pathname: string): StoredArtifactRecord | null {
-  const raw = loadJsonFile(pathname);
+  const raw = readJsonFileStrict(pathname, `artifact record ${pathname}`);
   if (raw === undefined) {
     return null;
   }

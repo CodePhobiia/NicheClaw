@@ -109,7 +109,7 @@ function buildInvalidatedResult(params: {
 }): AtomicBenchmarkRunResult {
   return {
     summary: {
-      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}--invalidated`,
+      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}-invalidated`,
       benchmark_suite_id: params.suite.metadata.benchmark_suite_id,
       case_kind: params.suite.metadata.case_kind,
       mode: params.suite.metadata.mode,
@@ -202,7 +202,7 @@ export async function runAtomicBenchmark(params: {
 
   return {
     summary: {
-      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}--atomic-run`,
+      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}-atomic-run`,
       benchmark_suite_id: params.suite.metadata.benchmark_suite_id,
       case_kind: params.suite.metadata.case_kind,
       mode: params.suite.metadata.mode,

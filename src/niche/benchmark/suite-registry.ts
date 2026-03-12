@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
   BenchmarkArmIdentifierSchema,
@@ -10,6 +10,7 @@ import {
   EvalCaseSchema,
   type BenchmarkArmIdentifier,
 } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "../store/index.js";
 
 export const AtomicBenchmarkSuiteRecordSchema = Type.Object(
@@ -99,7 +100,10 @@ export function getAtomicBenchmarkSuite(
   suiteId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): AtomicBenchmarkSuiteRecord | null {
-  const raw = loadJsonFile(resolveBenchmarkSuitePath(suiteId, env));
+  const raw = readJsonFileStrict(
+    resolveBenchmarkSuitePath(suiteId, env),
+    `atomic benchmark suite ${suiteId}`,
+  );
   if (raw === undefined) {
     return null;
   }
@@ -145,7 +149,10 @@ export function getBenchmarkArm(
   benchmarkArmId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): BenchmarkArmIdentifier | null {
-  const raw = loadJsonFile(resolveBenchmarkArmPath(benchmarkArmId, env));
+  const raw = readJsonFileStrict(
+    resolveBenchmarkArmPath(benchmarkArmId, env),
+    `benchmark arm ${benchmarkArmId}`,
+  );
   if (raw === undefined) {
     return null;
   }

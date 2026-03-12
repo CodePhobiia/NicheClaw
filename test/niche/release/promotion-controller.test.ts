@@ -111,10 +111,11 @@ function makeBenchmarkResult(params: {
   hardFailRate?: number;
   invalidated?: boolean;
   contaminationDetected?: boolean;
+  suiteId?: string;
 }): BenchmarkResultSummary {
   return {
     benchmark_result_id: params.resultId,
-    benchmark_suite_id: "repo-ci-suite",
+    benchmark_suite_id: params.suiteId ?? "repo-ci-suite",
     case_kind: "atomic_case",
     mode: "offline_gold",
     baseline_arm_id: "baseline-manifest-v1",
@@ -246,6 +247,32 @@ describe("release engine and promoted monitor", () => {
 
     expect(policy.recommended_decision).toBe("rejected");
     expect(policy.blocking_reasons[0]).toContain("invalidated");
+  });
+
+  it("rejects benchmark evidence from the wrong suite instead of trusting it", () => {
+    const policy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: makeCandidateManifest(),
+      benchmarkResults: [
+        makeBenchmarkResult({
+          resultId: "benchmark-wrong-suite",
+          meanDelta: 0.08,
+          lowBound: 0.03,
+          suiteId: "other-suite",
+        }),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+
+    expect(policy.recommended_decision).toBe("rejected");
+    expect(policy.blocking_reasons).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("targets suite other-suite"),
+      ]),
+    );
   });
 
   it("keeps a winning candidate in shadow when shadow evidence is still missing", () => {

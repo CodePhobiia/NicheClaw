@@ -265,6 +265,17 @@ describe("manifest store", () => {
       ).toThrow(/Invalid baseline manifest/u);
     });
   });
+
+  it("fails loudly when a stored manifest file contains malformed JSON", async () => {
+    await withTempHome(async () => {
+      const pathname = writeBaselineManifest(makeBaselineManifest(), process.env);
+      fs.writeFileSync(pathname, "{ invalid-json", "utf8");
+
+      expect(() =>
+        getBaselineManifest("baseline-manifest-repo-ci", process.env),
+      ).toThrow(/Invalid JSON in baseline manifest baseline-manifest-repo-ci/u);
+    });
+  });
 });
 
 describe("artifact registry", () => {

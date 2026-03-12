@@ -104,6 +104,11 @@ export function evaluateReleasePolicy(params: {
   }
 
   for (const result of [...params.benchmarkResults, ...shadowResults]) {
+    if (result.benchmark_suite_id !== params.candidateManifest.benchmark_suite_id) {
+      blockingReasons.push(
+        `Benchmark result ${result.benchmark_result_id} targets suite ${result.benchmark_suite_id}, expected ${params.candidateManifest.benchmark_suite_id}.`,
+      );
+    }
     if (result.invalidated) {
       blockingReasons.push(
         `Benchmark result ${result.benchmark_result_id} is invalidated: ${result.invalidation_reasons.join(", ")}`,

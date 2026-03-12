@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import { RunTraceSchema, type ReplayabilityStatus, type RunTrace, type RunTraceMode } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "./paths.js";
 
 const TRACE_STORE_CACHE_KEY = "niche-store-run-trace";
@@ -57,7 +58,7 @@ export function getRunTrace(
   env: NodeJS.ProcessEnv = process.env,
 ): RunTrace | null {
   const pathname = resolveTracePath(traceId, env);
-  const raw = loadJsonFile(pathname);
+  const raw = readJsonFileStrict(pathname, `run trace ${traceId}`);
   if (raw === undefined) {
     return null;
   }

@@ -174,7 +174,7 @@ function buildInvalidatedResult(params: {
 }): EpisodeBenchmarkRunResult {
   return {
     summary: {
-      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}--episode-invalidated`,
+      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}-episode-invalidated`,
       benchmark_suite_id: params.suite.metadata.benchmark_suite_id,
       case_kind: "episode_case",
       mode: params.suite.metadata.mode,
@@ -293,7 +293,7 @@ export async function runEpisodeBenchmark(params: {
 
   return {
     summary: {
-      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}--episode-run`,
+      benchmark_result_id: `${params.suite.metadata.benchmark_suite_id}-episode-run`,
       benchmark_suite_id: params.suite.metadata.benchmark_suite_id,
       case_kind: "episode_case",
       mode: params.suite.metadata.mode,

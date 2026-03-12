@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
   ArbitrationArtifactSchema,
@@ -14,6 +14,7 @@ import {
   type ArbitrationArtifact,
   type GraderArtifact,
 } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "../store/index.js";
 
 export const BenchmarkFixtureMetadataSchema = Type.Object(
@@ -91,7 +92,10 @@ function writeUniqueRecord<T extends { [key: string]: unknown }>(
 }
 
 function readRecord<T>(root: string, recordId: string): T | null {
-  const raw = loadJsonFile(resolveRecordPath(root, recordId));
+  const raw = readJsonFileStrict(
+    resolveRecordPath(root, recordId),
+    `benchmark registry record ${recordId}`,
+  );
   if (raw === undefined) {
     return null;
   }

@@ -2,9 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import { IdentifierString, LineageRefSchema, type LineageRef } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveLineageStorePath, resolveNicheStoreRoots } from "./paths.js";
 
 export const StoredLineageEdgeSchema = Type.Object(
@@ -65,7 +66,10 @@ export function getParentsForArtifact(
   childArtifactId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): LineageRef[] {
-  const raw = loadJsonFile(resolveLineageStorePath(childArtifactId, env));
+  const raw = readJsonFileStrict(
+    resolveLineageStorePath(childArtifactId, env),
+    `lineage record ${childArtifactId}`,
+  );
   if (raw === undefined) {
     return [];
   }
@@ -92,13 +96,13 @@ export function listLineageEdges(env: NodeJS.ProcessEnv = process.env): StoredLi
   return fs
     .readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-    .map((entry) => path.join(root, entry.name))
-    .toSorted((left, right) => left.localeCompare(right))
-    .flatMap((pathname) => {
-      const raw = loadJsonFile(pathname);
-      if (raw === undefined) {
-        return [];
-      }
+      .map((entry) => path.join(root, entry.name))
+      .toSorted((left, right) => left.localeCompare(right))
+      .flatMap((pathname) => {
+        const raw = readJsonFileStrict(pathname, `lineage record ${pathname}`);
+        if (raw === undefined) {
+          return [];
+        }
       if (!Array.isArray(raw)) {
         throw new Error(`Invalid lineage store payload at ${pathname}.`);
       }

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { loadJsonFile, saveJsonFile } from "../../infra/json-file.js";
+import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
   BaselineManifestSchema,
@@ -9,6 +9,7 @@ import {
   type CandidateManifest,
   type SourceAccessManifest,
 } from "../schema/index.js";
+import { readJsonFileStrict } from "../json.js";
 import { resolveManifestStorePath, resolveManifestStoreRoot, type ManifestStoreKind } from "./paths.js";
 
 type ManifestByKind = {
@@ -51,7 +52,7 @@ function assertManifestValid<T>(kind: ManifestStoreKind, manifest: T): T {
 
 function readManifest<T>(kind: ManifestStoreKind, manifestId: string, env?: NodeJS.ProcessEnv): T | null {
   const pathname = resolveManifestStorePath(kind, manifestId, env);
-  const raw = loadJsonFile(pathname);
+  const raw = readJsonFileStrict(pathname, `${kind} manifest ${manifestId}`);
   if (raw === undefined) {
     return null;
   }
