@@ -3,6 +3,14 @@ export {
   type NicheActionMediationResult,
 } from "./action-mediator.js";
 export {
+  applyVerifierGate,
+  maybeRunNicheVerifierGate,
+  payloadsAlreadyCarryVerifierGate,
+  type VerifierGateAction,
+  type VerifierGateFinalizationResult,
+} from "./verifier-gate.js";
+export {
+  recordVerifierDecisionForRun,
   attachNicheRunAttemptMetadata,
   buildActionCandidatesForTool,
   clearAllNicheRunTraceContextsForTest,

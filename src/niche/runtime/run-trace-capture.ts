@@ -1,4 +1,10 @@
 import type { ActionProposal, ActionCandidate, GuardDecision } from "../action-policy/index.js";
+import type {
+  DomainPack,
+  EvidenceBundleRef,
+  SourceAccessManifest,
+} from "../schema/index.js";
+import type { VerifierDecision, VerifierPackConfig } from "../verifier/index.js";
 
 export type NicheActionPolicyRuntimeConfig = {
   allowedTools: string[];
@@ -43,10 +49,15 @@ export type NicheRunTraceContext = {
   agentId?: string;
   provider?: string;
   modelId?: string;
+  domainPack?: DomainPack;
+  sourceAccessManifest?: SourceAccessManifest;
+  evidenceBundleRefs?: EvidenceBundleRef[];
+  verifierPackConfig?: VerifierPackConfig;
   actionPolicy: NicheActionPolicyRuntimeConfig;
   actionProposals: ActionProposal[];
   guardDecisions: GuardDecision[];
   toolEvents: NicheToolTraceEvent[];
+  verifierDecisions: VerifierDecision[];
 };
 
 const nicheRunTraceContexts = new Map<string, NicheRunTraceContext>();
@@ -73,6 +84,7 @@ export function registerNicheRunTraceContext(
     actionProposals: [],
     guardDecisions: [],
     toolEvents: [],
+    verifierDecisions: [],
   });
 }
 
@@ -125,6 +137,17 @@ export function recordActionProposalForRun(
   }
   existing.guardDecisions.push(guardDecision);
   existing.actionProposals.push(proposal);
+}
+
+export function recordVerifierDecisionForRun(
+  runId: string,
+  decision: VerifierDecision,
+): void {
+  const existing = nicheRunTraceContexts.get(runId);
+  if (!existing) {
+    return;
+  }
+  existing.verifierDecisions.push(decision);
 }
 
 export function buildActionCandidatesForTool(params: {

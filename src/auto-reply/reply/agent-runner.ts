@@ -19,6 +19,7 @@ import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { maybeRunNicheVerifierGate } from "../../niche/runtime/verifier-gate.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
@@ -534,8 +535,15 @@ export async function runReplyAgent(params: {
       hasReminderCommitment && successfulCronAdds === 0 && !coveredByExistingCron
         ? appendUnscheduledReminderNote(replyPayloads)
         : replyPayloads;
+    const verifierGateResult = maybeRunNicheVerifierGate({
+      runId,
+      payloads: guardedReplyPayloads,
+      checkedAt: new Date().toISOString(),
+    });
+    const finalVerifierPayloads =
+      verifierGateResult?.delivery_payloads ?? guardedReplyPayloads;
 
-    await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
+    await signalTypingIfNeeded(finalVerifierPayloads, typingSignals);
 
     if (isDiagnosticsEnabled(cfg) && hasNonzeroUsage(usage)) {
       const input = usage.input ?? 0;
@@ -603,7 +611,7 @@ export async function runReplyAgent(params: {
     }
 
     // If verbose is enabled, prepend operational run notices.
-    let finalPayloads = guardedReplyPayloads;
+    let finalPayloads = finalVerifierPayloads;
     const verboseNotices: ReplyPayload[] = [];
 
     if (verboseEnabled && activeIsNewSession) {

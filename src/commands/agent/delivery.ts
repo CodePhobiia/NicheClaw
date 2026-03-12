@@ -17,6 +17,7 @@ import {
   normalizeOutboundPayloadsForJson,
 } from "../../infra/outbound/payloads.js";
 import type { OutboundSessionContext } from "../../infra/outbound/session-context.js";
+import { maybeRunNicheVerifierGate } from "../../niche/runtime/verifier-gate.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import type { AgentCommandOpts } from "./types.js";
@@ -175,7 +176,13 @@ export async function deliverAgentCommandResult(params: {
     }
   }
 
-  const normalizedPayloads = normalizeOutboundPayloadsForJson(payloads ?? []);
+  const gatedPayloads =
+    maybeRunNicheVerifierGate({
+      runId: opts.runId,
+      payloads: payloads ?? [],
+      checkedAt: new Date().toISOString(),
+    })?.delivery_payloads ?? payloads ?? [];
+  const normalizedPayloads = normalizeOutboundPayloadsForJson(gatedPayloads);
   if (opts.json) {
     runtime.log(
       JSON.stringify(
@@ -192,12 +199,12 @@ export async function deliverAgentCommandResult(params: {
     }
   }
 
-  if (!payloads || payloads.length === 0) {
+  if (gatedPayloads.length === 0) {
     runtime.log("No reply from agent.");
     return { payloads: [], meta: result.meta };
   }
 
-  const deliveryPayloads = normalizeOutboundPayloads(payloads);
+  const deliveryPayloads = normalizeOutboundPayloads(gatedPayloads);
   const logPayload = (payload: NormalizedOutboundPayload) => {
     if (opts.json) {
       return;

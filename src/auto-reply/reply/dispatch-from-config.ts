@@ -22,6 +22,7 @@ import {
   logMessageQueued,
   logSessionStateChange,
 } from "../../logging/diagnostic.js";
+import { maybeRunNicheVerifierGate } from "../../niche/runtime/verifier-gate.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
@@ -494,10 +495,16 @@ export async function dispatchReplyFromConfig(params: {
     }
 
     const replies = replyResult ? (Array.isArray(replyResult) ? replyResult : [replyResult]) : [];
+    const gatedReplies =
+      maybeRunNicheVerifierGate({
+        runId: params.replyOptions?.runId,
+        payloads: replies,
+        checkedAt: new Date().toISOString(),
+      })?.delivery_payloads ?? replies;
 
     let queuedFinal = false;
     let routedFinalCount = 0;
-    for (const reply of replies) {
+    for (const reply of gatedReplies) {
       // Suppress reasoning payloads from channel delivery — channels using this
       // generic dispatch path do not have a dedicated reasoning lane.
       if (shouldSuppressReasoningPayload(reply)) {
@@ -544,7 +551,7 @@ export async function dispatchReplyFromConfig(params: {
     // but we still want TTS audio to be generated from the accumulated block content.
     if (
       ttsMode === "final" &&
-      replies.length === 0 &&
+      gatedReplies.length === 0 &&
       blockCount > 0 &&
       accumulatedBlockText.trim()
     ) {
