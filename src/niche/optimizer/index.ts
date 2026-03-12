@@ -66,3 +66,17 @@ export {
   type TuningPlannerInput,
   type TuningPlannerPolicy,
 } from "./tuning-planner.js";
+export {
+  planContinuousOptimizationLoop,
+  type CandidateRefreshPlan,
+  type FailureCluster,
+} from "./continuous-loop.js";
+export {
+  buildRefreshTriggerSummary,
+  type RefreshTriggerSummary,
+} from "./drift-signals.js";
+export {
+  evaluateRefreshEligibility,
+  type RefreshEligibility,
+  type RefreshTraceCandidate,
+} from "./refresh-policy.js";
