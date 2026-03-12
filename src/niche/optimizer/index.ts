@@ -48,3 +48,21 @@ export {
   listRewardCalibrationMetadata,
   type RewardCalibrationMetadata,
 } from "./reward-registry.js";
+export {
+  buildProviderNativeTuningJobPlan,
+  getDefaultTuningAdapters,
+  OpenAiNativeTuningAdapter,
+  type ProviderNativeTuningAdapter,
+  type ProviderNativeTuningJobPlan,
+} from "./tuning-adapters.js";
+export {
+  canPlanProviderNativeTuning,
+  createProviderTuningCapability,
+  type ProviderTuningCapability,
+} from "./tuning-capabilities.js";
+export {
+  selectTuningPlan,
+  type TuningPlan,
+  type TuningPlannerInput,
+  type TuningPlannerPolicy,
+} from "./tuning-planner.js";
