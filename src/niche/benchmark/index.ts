@@ -1,10 +1,45 @@
 export {
+  arbitrateGraderSignals,
+  ArbitrationDecisionOutcomeSchema,
+  ArbitrationDecisionSchema,
+  GraderSignalOutcomeSchema,
+  GraderSignalSchema,
+  type ArbitrationDecision,
+  type ArbitrationDecisionOutcome,
+  type GraderSignal,
+  type GraderSignalOutcome,
+} from "./arbitration.js";
+export {
   runAtomicBenchmark,
   type AtomicBenchmarkRunResult,
   type AtomicCaseExecutionResult,
   type AtomicCaseExecutor,
   type AtomicPairedCaseResult,
 } from "./atomic-runner.js";
+export {
+  runEpisodeBenchmark,
+  EpisodeBenchmarkRunResultSchema,
+  EpisodeBenchmarkSuiteRecordSchema,
+  EpisodeCaseExecutionResultSchema,
+  EpisodePairedCaseResultSchema,
+  EpisodeStepResultSchema,
+  type EpisodeBenchmarkRunResult,
+  type EpisodeBenchmarkSuiteRecord,
+  type EpisodeCaseExecutionResult,
+  type EpisodeCaseExecutor,
+  type EpisodePairedCaseResult,
+  type EpisodeStepResult,
+} from "./episode-runner.js";
+export {
+  BenchmarkInvalidationReasonCodeSchema,
+  BenchmarkInvalidationReasonSchema,
+  BENCHMARK_INVALIDATION_REASON_CODES,
+  collectBenchmarkInvalidationReasons,
+  collectManifestInvalidationReasons,
+  isBenchmarkInvalidated,
+  type BenchmarkInvalidationReason,
+  type BenchmarkInvalidationReasonCode,
+} from "./invalidation.js";
 export {
   bootstrapConfidenceInterval,
   buildPairedDeltaSummary,
