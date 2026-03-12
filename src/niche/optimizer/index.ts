@@ -21,3 +21,30 @@ export {
   type MaterializedOptimizerArtifact,
   type OptimizerLineageParent,
 } from "./lineage-runtime.js";
+export {
+  buildOptimizerJobId,
+  OPTIMIZER_JOB_STATUSES,
+  OPTIMIZER_JOB_TYPES,
+  type OptimizerGovernanceCheck,
+  type OptimizerJob,
+  type OptimizerJobResultMetadata,
+  type OptimizerJobStatus,
+  type OptimizerJobType,
+} from "./job-model.js";
+export {
+  planCandidateGenerationJob,
+  planEvaluationPreparationJob,
+  planTeacherRolloutJob,
+  planVerifierRefreshJob,
+} from "./orchestrator.js";
+export {
+  buildRewardArtifactRef,
+  createRewardArtifact,
+  createRewardCalibrationMetadata,
+  getRewardArtifact,
+  getRewardCalibrationMetadata,
+  listRewardArtifactLineage,
+  listRewardArtifacts,
+  listRewardCalibrationMetadata,
+  type RewardCalibrationMetadata,
+} from "./reward-registry.js";
