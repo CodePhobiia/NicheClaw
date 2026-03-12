@@ -196,3 +196,11 @@ export function listArtifactRecords(params: {
     return true;
   });
 }
+
+export function getArtifactRecordsByIds(
+  artifactIds: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): StoredArtifactRecord[] {
+  const requestedIds = new Set(artifactIds);
+  return listArtifactRecords({ env }).filter((record) => requestedIds.has(record.ref.artifact_id));
+}

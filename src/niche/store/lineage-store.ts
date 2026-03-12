@@ -114,3 +114,27 @@ export function getChildrenForArtifact(
     (edge) => edge.parent_artifact_id === parentArtifactId,
   );
 }
+
+export function collectDescendantArtifactIds(
+  rootArtifactIds: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const visited = new Set<string>();
+  const queue = [...new Set(rootArtifactIds)];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    for (const child of getChildrenForArtifact(current, env)) {
+      if (!visited.has(child.child_artifact_id)) {
+        queue.push(child.child_artifact_id);
+      }
+    }
+  }
+
+  return [...visited].toSorted((left, right) => left.localeCompare(right));
+}

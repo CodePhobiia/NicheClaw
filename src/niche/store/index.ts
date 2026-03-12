@@ -1,10 +1,12 @@
 export {
   getArtifactRecord,
+  getArtifactRecordsByIds,
   listArtifactRecords,
   createArtifactRecord,
   computeArtifactContentHash,
 } from "./artifact-registry.js";
 export {
+  collectDescendantArtifactIds,
   getChildrenForArtifact,
   getParentsForArtifact,
   listLineageEdges,

@@ -17,3 +17,14 @@ export {
   type PromotedMonitorDefinition,
   type PromotedMonitorObservation,
 } from "./promoted-monitor.js";
+export {
+  buildInvalidationPlan,
+  type InvalidationActionType,
+  type InvalidationPlan,
+  type InvalidationPlanAction,
+  type InvalidationTargetType,
+} from "./invalidation-plan.js";
+export {
+  traceRightsRevocationImpact,
+  type RightsRevocationImpact,
+} from "./rights-revocation.js";
