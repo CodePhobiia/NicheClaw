@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
@@ -23,6 +22,7 @@ import {
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
+import type { PreparedNicheRunSeed } from "../../niche/schema/index.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   isMarkdownCapableMessageChannel,
@@ -75,6 +75,7 @@ export type AgentRunLoopResult =
   | { kind: "final"; payload: ReplyPayload };
 
 export async function runAgentTurnWithFallback(params: {
+  runId: string;
   commandBody: string;
   followupRun: FollowupRun;
   sessionCtx: TemplateContext;
@@ -98,9 +99,11 @@ export async function runAgentTurnWithFallback(params: {
   isHeartbeat: boolean;
   sessionKey?: string;
   getActiveSessionEntry: () => SessionEntry | undefined;
+  setActiveSessionEntry: (entry: SessionEntry | undefined) => void;
   activeSessionStore?: Record<string, SessionEntry>;
   storePath?: string;
   resolvedVerboseLevel: VerboseLevel;
+  nicheRunSeed?: PreparedNicheRunSeed;
 }): Promise<AgentRunLoopResult> {
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
   let didLogHeartbeatStrip = false;
@@ -108,7 +111,7 @@ export async function runAgentTurnWithFallback(params: {
   // Track payloads sent directly (not via pipeline) during tool flush to avoid duplicates.
   const directlySentBlockKeys = new Set<string>();
 
-  const runId = params.opts?.runId ?? crypto.randomUUID();
+  const runId = params.runId;
   const normalizeReplyMediaPaths = createReplyMediaPathNormalizer({
     cfg: params.followupRun.run.config,
     sessionKey: params.sessionKey,
@@ -332,6 +335,7 @@ export async function runAgentTurnWithFallback(params: {
               groupSpace: params.sessionCtx.GroupSpace?.trim() ?? undefined,
               ...senderContext,
               ...runBaseParams,
+              nicheRunSeed: params.nicheRunSeed,
               prompt: params.commandBody,
               extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
               toolResultFormat: (() => {

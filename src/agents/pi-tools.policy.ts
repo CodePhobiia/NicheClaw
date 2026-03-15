@@ -3,6 +3,7 @@ import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
 import type { AgentToolsConfig } from "../config/types.tools.js";
+import type { PreparedNicheRunSeed } from "../niche/schema/index.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { resolveThreadParentSessionKey } from "../sessions/session-key-utils.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
@@ -153,6 +154,16 @@ export function filterToolsByPolicy(tools: AnyAgentTool[], policy?: SandboxToolP
   }
   const matcher = makeToolPolicyMatcher(policy);
   return tools.filter((tool) => matcher(tool.name));
+}
+
+export function resolveNicheToolPolicy(seed?: PreparedNicheRunSeed): SandboxToolPolicy | undefined {
+  const allowedTools = seed?.action_policy_runtime.allowed_tools;
+  if (!Array.isArray(allowedTools) || allowedTools.length === 0) {
+    return undefined;
+  }
+  return {
+    allow: [...allowedTools],
+  };
 }
 
 type ToolPolicyConfig = {

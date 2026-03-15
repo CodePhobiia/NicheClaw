@@ -2,6 +2,10 @@ import crypto from "node:crypto";
 import type { Skill } from "@mariozechner/pi-coding-agent";
 import type { ChatType } from "../../channels/chat-type.js";
 import type { ChannelId } from "../../channels/plugins/types.js";
+import type {
+  NicheStackReleaseMode,
+  NicheStackResolutionSource,
+} from "../../niche/schema/index.js";
 import type { DeliveryContext } from "../../utils/delivery-context.js";
 import type { TtsAutoMode } from "../types.tts.js";
 
@@ -63,6 +67,16 @@ export type AcpSessionRuntimeOptions = {
   timeoutSeconds?: number;
   /** Backend-specific option bag mapped through session/set_config_option. */
   backendExtras?: Record<string, string>;
+};
+
+export type SessionNicheState = {
+  sessionOverrideStackId?: string;
+  lastResolvedStackId?: string;
+  lastResolvedSource?: NicheStackResolutionSource;
+  lastResolvedAt?: number;
+  lastResolvedCandidateManifestId?: string;
+  lastResolvedNicheProgramId?: string;
+  lastResolvedReleaseMode?: NicheStackReleaseMode;
 };
 
 export type SessionEntry = {
@@ -165,6 +179,7 @@ export type SessionEntry = {
   lastTo?: string;
   lastAccountId?: string;
   lastThreadId?: string | number;
+  niche?: SessionNicheState;
   skillsSnapshot?: SessionSkillSnapshot;
   systemPromptReport?: SessionSystemPromptReport;
   acp?: SessionAcpMeta;

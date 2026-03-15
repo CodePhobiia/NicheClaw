@@ -16,6 +16,8 @@ import {
   ensureGlobalUndiciStreamTimeouts,
 } from "../../../infra/net/undici-global-dispatcher.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
+import { buildNichePlannerPromptBlock } from "../../../niche/runtime/planner-injection.js";
+import { attachNicheRunAttemptMetadata } from "../../../niche/runtime/run-trace-capture.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import type {
   PluginHookAgentContext,
@@ -134,7 +136,6 @@ import {
 } from "./compaction-timeout.js";
 import { pruneProcessedHistoryImages } from "./history-image-prune.js";
 import { detectAndLoadPromptImages } from "./images.js";
-import { attachNicheRunAttemptMetadata } from "../../../niche/runtime/run-trace-capture.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 
 type PromptBuildHookRunner = {
@@ -891,6 +892,7 @@ export async function runEmbeddedAttempt(
           requireExplicitMessageTarget:
             params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
           disableMessageTool: params.disableMessageTool,
+          nicheRunSeed: params.nicheRunSeed,
         });
     const toolsEnabled = supportsModelTools(params.model);
     const tools = sanitizeToolsForGoogle({
@@ -1678,14 +1680,22 @@ export async function runEmbeddedAttempt(
             systemPromptText = legacySystemPrompt;
             log.debug(`hooks: applied systemPrompt override (${legacySystemPrompt.length} chars)`);
           }
+          // NicheClaw: inject domain-aware planner block into system context
+          const nichePlannerBlock = buildNichePlannerPromptBlock(params.runId);
+          const effectiveAppendSystemContext = nichePlannerBlock
+            ? hookResult?.appendSystemContext
+              ? `${hookResult.appendSystemContext}\n\n${nichePlannerBlock}`
+              : nichePlannerBlock
+            : hookResult?.appendSystemContext;
+
           const prependedOrAppendedSystemPrompt = composeSystemPromptWithHookContext({
             baseSystemPrompt: systemPromptText,
             prependSystemContext: hookResult?.prependSystemContext,
-            appendSystemContext: hookResult?.appendSystemContext,
+            appendSystemContext: effectiveAppendSystemContext,
           });
           if (prependedOrAppendedSystemPrompt) {
             const prependSystemLen = hookResult?.prependSystemContext?.trim().length ?? 0;
-            const appendSystemLen = hookResult?.appendSystemContext?.trim().length ?? 0;
+            const appendSystemLen = effectiveAppendSystemContext?.trim().length ?? 0;
             applySystemPromptOverrideToSession(activeSession, prependedOrAppendedSystemPrompt);
             systemPromptText = prependedOrAppendedSystemPrompt;
             log.debug(

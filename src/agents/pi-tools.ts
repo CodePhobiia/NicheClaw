@@ -3,6 +3,8 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { ToolLoopDetectionConfig } from "../config/types.tools.js";
 import { resolveMergedSafeBinProfileFixtures } from "../infra/exec-safe-bin-runtime-policy.js";
 import { logWarn } from "../logger.js";
+import { rankToolsForNicheRun } from "../niche/runtime/tool-ranking.js";
+import type { PreparedNicheRunSeed } from "../niche/schema/index.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
@@ -22,6 +24,7 @@ import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import {
   isToolAllowedByPolicies,
+  resolveNicheToolPolicy,
   resolveEffectiveToolPolicy,
   resolveGroupToolPolicy,
   resolveSubagentToolPolicyForSession,
@@ -267,6 +270,8 @@ export function createOpenClawCodingTools(options?: {
   disableMessageTool?: boolean;
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
+  /** Active NicheClaw stack compiled down into the prepared-seed substrate. */
+  nicheRunSeed?: PreparedNicheRunSeed;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -314,6 +319,7 @@ export function createOpenClawCodingTools(options?: {
     providerProfilePolicy,
     providerProfileAlsoAllow,
   );
+  const nichePolicy = resolveNicheToolPolicy(options?.nicheRunSeed);
   // Prefer sessionKey for process isolation scope to prevent cross-session process visibility/killing.
   // Fallback to agentId if no sessionKey is available (e.g. legacy or global contexts).
   const scopeKey =
@@ -582,10 +588,28 @@ export function createOpenClawCodingTools(options?: {
         groupPolicy,
         agentId,
       }),
+      {
+        policy: nichePolicy,
+        label: options?.nicheRunSeed?.active_stack_id
+          ? `niche.activeStack (${options.nicheRunSeed.active_stack_id})`
+          : "niche.actionPolicy",
+      },
       { policy: sandbox?.tools, label: "sandbox tools.allow" },
       { policy: subagentPolicy, label: "subagent tools.allow" },
     ],
   });
+  // NicheClaw: rank tools by domain relevance when a niche run is active.
+  if (options?.runId) {
+    const ranked = rankToolsForNicheRun(
+      options.runId,
+      subagentFiltered.map((t) => t.name),
+    );
+    if (ranked.length > 0) {
+      const rankMap = new Map(ranked.map((r, i) => [r.tool_name, i]));
+      subagentFiltered.sort((a, b) => (rankMap.get(a.name) ?? 999) - (rankMap.get(b.name) ?? 999));
+    }
+  }
+
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.
   // Without this, some providers (notably OpenAI) will reject root-level union schemas.
   // Provider-specific cleaning: Gemini needs constraint keywords stripped, but Anthropic expects them.

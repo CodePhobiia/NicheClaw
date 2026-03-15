@@ -25,6 +25,7 @@ import type {
   PluginHookBeforeToolCallEvent,
   PluginHookBeforeToolCallResult,
   PluginHookGatewayContext,
+  PluginHookNicheLifecycleEvent,
   PluginHookGatewayStartEvent,
   PluginHookGatewayStopEvent,
   PluginHookMessageContext,
@@ -94,6 +95,7 @@ export type {
   PluginHookGatewayContext,
   PluginHookGatewayStartEvent,
   PluginHookGatewayStopEvent,
+  PluginHookNicheLifecycleEvent,
 };
 
 export type HookRunnerLogger = {
@@ -704,6 +706,17 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     return runVoidHook("gateway_stop", event, ctx);
   }
 
+  /**
+   * Run niche_lifecycle hook.
+   * Runs in parallel (fire-and-forget).
+   */
+  async function runNicheLifecycle(
+    event: PluginHookNicheLifecycleEvent,
+    ctx: PluginHookAgentContext,
+  ): Promise<void> {
+    return runVoidHook("niche_lifecycle", event, ctx);
+  }
+
   // =========================================================================
   // Utility
   // =========================================================================
@@ -750,6 +763,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     runSubagentDeliveryTarget,
     runSubagentSpawned,
     runSubagentEnded,
+    runNicheLifecycle,
     // Gateway hooks
     runGatewayStart,
     runGatewayStop,

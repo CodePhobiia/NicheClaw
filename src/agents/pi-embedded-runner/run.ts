@@ -7,6 +7,7 @@ import {
 } from "../../context-engine/index.js";
 import { computeBackoff, sleepWithAbort, type BackoffPolicy } from "../../infra/backoff.js";
 import { generateSecureToken } from "../../infra/secure-random.js";
+import { registerPreparedNicheRunTraceContext } from "../../niche/runtime/run-trace-capture.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { PluginHookBeforeAgentStartResult } from "../../plugins/types.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
@@ -274,6 +275,12 @@ export async function runEmbeddedPiAgent(
   return enqueueSession(() =>
     enqueueGlobal(async () => {
       const started = Date.now();
+      if (params.nicheRunSeed) {
+        registerPreparedNicheRunTraceContext({
+          runId: params.runId,
+          seed: params.nicheRunSeed,
+        });
+      }
       const workspaceResolution = resolveRunWorkspaceDir({
         workspaceDir: params.workspaceDir,
         sessionKey: params.sessionKey,

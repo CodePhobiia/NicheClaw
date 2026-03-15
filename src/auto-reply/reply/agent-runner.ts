@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
@@ -6,6 +7,7 @@ import { isCliProvider } from "../../agents/model-selection.js";
 import { queueEmbeddedPiMessage } from "../../agents/pi-embedded.js";
 import { hasNonzeroUsage } from "../../agents/usage.js";
 import {
+  mergeSessionEntry,
   resolveAgentIdFromSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -19,6 +21,11 @@ import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { generateSecureUuid } from "../../infra/secure-random.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
+import {
+  assertPreparedSeedReadiness,
+  buildResolvedNicheSessionPatch,
+  safeResolveActiveNicheStackForRun,
+} from "../../niche/runtime/index.js";
 import { maybeRunNicheVerifierGate } from "../../niche/runtime/verifier-gate.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
@@ -140,6 +147,7 @@ export async function runReplyAgent(params: {
     storePath,
     resolvedVerboseLevel,
   });
+  const effectiveRunId = opts?.runId ?? crypto.randomUUID();
 
   const pendingToolTasks = new Set<Promise<void>>();
   const blockReplyTimeoutMs = opts?.blockReplyTimeoutMs ?? BLOCK_REPLY_SEND_TIMEOUT_MS;
@@ -240,6 +248,52 @@ export async function runReplyAgent(params: {
     storePath,
     isHeartbeat,
   });
+
+  const resolvedTo =
+    followupRun.originatingTo ??
+    resolveOriginMessageTo({
+      originatingTo: sessionCtx.OriginatingTo,
+      to: sessionCtx.To,
+    });
+  const resolvedNicheRunSeed =
+    followupRun.run.nicheRunSeed ??
+    safeResolveActiveNicheStackForRun({
+      runId: effectiveRunId,
+      sessionEntry: activeSessionEntry,
+      agentId: followupRun.run.agentId,
+      messageChannel: followupRun.run.messageProvider,
+      accountId: followupRun.run.agentAccountId ?? sessionCtx.AccountId,
+      to: resolvedTo,
+      env: process.env,
+    })?.runSeed;
+  if (resolvedNicheRunSeed) {
+    assertPreparedSeedReadiness(resolvedNicheRunSeed, process.env);
+    const nichePatch = buildResolvedNicheSessionPatch({
+      existing: activeSessionEntry,
+      runSeed: resolvedNicheRunSeed,
+    });
+    if (nichePatch) {
+      const existingEntry =
+        activeSessionEntry ?? (sessionKey ? activeSessionStore?.[sessionKey] : undefined);
+      const nextEntry = mergeSessionEntry(existingEntry, {
+        sessionId: followupRun.run.sessionId,
+        ...nichePatch,
+      });
+      activeSessionEntry = nextEntry;
+      if (sessionKey && activeSessionStore) {
+        activeSessionStore[sessionKey] = nextEntry;
+      }
+      if (storePath && sessionKey) {
+        await updateSessionStore(storePath, (store) => {
+          store[sessionKey] = mergeSessionEntry(store[sessionKey], {
+            sessionId: followupRun.run.sessionId,
+            ...nichePatch,
+          });
+          return store[sessionKey];
+        });
+      }
+    }
+  }
 
   const runFollowupTurn = createFollowupRunner({
     opts,
@@ -362,11 +416,16 @@ export async function runReplyAgent(params: {
       resetSessionAfterCompactionFailure,
       resetSessionAfterRoleOrderingConflict,
       isHeartbeat,
+      runId: effectiveRunId,
       sessionKey,
       getActiveSessionEntry: () => activeSessionEntry,
+      setActiveSessionEntry: (entry) => {
+        activeSessionEntry = entry;
+      },
       activeSessionStore,
       storePath,
       resolvedVerboseLevel,
+      nicheRunSeed: resolvedNicheRunSeed,
     });
 
     if (runOutcome.kind === "final") {
@@ -540,8 +599,7 @@ export async function runReplyAgent(params: {
       payloads: guardedReplyPayloads,
       checkedAt: new Date().toISOString(),
     });
-    const finalVerifierPayloads =
-      verifierGateResult?.delivery_payloads ?? guardedReplyPayloads;
+    const finalVerifierPayloads = verifierGateResult?.delivery_payloads ?? guardedReplyPayloads;
 
     await signalTypingIfNeeded(finalVerifierPayloads, typingSignals);
 

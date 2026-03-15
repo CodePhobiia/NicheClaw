@@ -4,6 +4,12 @@ import {
   buildExecApprovalPendingReplyPayload,
   buildExecApprovalUnavailableReplyPayload,
 } from "../infra/exec-approval-reply.js";
+import { annotateToolResult } from "../niche/runtime/observation-processor.js";
+import {
+  recordToolExecutionResult,
+  recordToolExecutionStart,
+  recordToolExecutionUpdate,
+} from "../niche/runtime/run-trace-capture.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookAfterToolCallEvent } from "../plugins/types.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
@@ -22,11 +28,6 @@ import {
   sanitizeToolResult,
 } from "./pi-embedded-subscribe.tools.js";
 import { inferToolMetaFromArgs } from "./pi-embedded-utils.js";
-import {
-  recordToolExecutionResult,
-  recordToolExecutionStart,
-  recordToolExecutionUpdate,
-} from "../niche/runtime/run-trace-capture.js";
 import { consumeAdjustedParamsForToolCall } from "./pi-tools.before-tool-call.js";
 import { buildToolMutationState, isSameToolMutationAction } from "./tool-mutation.js";
 import { normalizeToolName } from "./tool-policy.js";
@@ -570,6 +571,17 @@ export async function handleToolExecutionEnd(
     result: sanitizedResult,
     isError: isToolError,
   });
+
+  // NicheClaw: annotate tool result with domain observation metadata.
+  if (runId) {
+    const resultText =
+      typeof sanitizedResult === "string"
+        ? sanitizedResult
+        : sanitizedResult != null
+          ? JSON.stringify(sanitizedResult).slice(0, 2000)
+          : "";
+    annotateToolResult(runId, toolName, resultText);
+  }
 
   await emitToolResultOutput({ ctx, toolName, meta, isToolError, result, sanitizedResult });
 
