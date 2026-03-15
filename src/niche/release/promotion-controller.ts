@@ -5,7 +5,11 @@ import {
   type CandidateRelease,
   type CandidateReleaseDecision,
 } from "../schema/index.js";
-import type { BenchmarkResultSummary, BaselineManifest, CandidateManifest } from "../schema/index.js";
+import type {
+  BenchmarkResultSummary,
+  BaselineManifest,
+  CandidateManifest,
+} from "../schema/index.js";
 import type { ReleasePolicyEvaluation } from "./policy-engine.js";
 
 export type PromotionControllerResult = {

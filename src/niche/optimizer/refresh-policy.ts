@@ -1,7 +1,4 @@
-import type {
-  ArtifactRef,
-  GovernedDataStatus,
-} from "../schema/index.js";
+import type { ArtifactRef, GovernedDataStatus } from "../schema/index.js";
 
 export type RefreshTraceCandidate = {
   trace_ref: ArtifactRef;
@@ -20,9 +17,7 @@ export type RefreshEligibility = {
   reasons: string[];
 };
 
-export function evaluateRefreshEligibility(
-  trace: RefreshTraceCandidate,
-): RefreshEligibility {
+export function evaluateRefreshEligibility(trace: RefreshTraceCandidate): RefreshEligibility {
   const reasons: string[] = [];
 
   if (trace.contamination_detected) {

@@ -1,5 +1,5 @@
-import type { VerifierMetricSummary } from "../verifier/index.js";
 import type { PromotedMonitorAssessment, PromotedMonitorDefinition } from "../release/index.js";
+import type { VerifierMetricSummary } from "../verifier/index.js";
 
 export type RefreshTriggerSummary = {
   warranted: boolean;
@@ -53,8 +53,7 @@ export function buildRefreshTriggerSummary(params: {
 
   return {
     warranted: true,
-    severity:
-      params.monitorAssessment.should_rollback || reasons.length >= 2 ? "refresh" : "watch",
+    severity: params.monitorAssessment.should_rollback || reasons.length >= 2 ? "refresh" : "watch",
     reasons,
   };
 }

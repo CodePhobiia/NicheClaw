@@ -132,19 +132,15 @@ function summarizeBenchmarkEvidence(results: BenchmarkResultSummary[]): {
     };
   }
   const meanDelta =
-    results.reduce(
-      (sum, result) => sum + result.paired_delta_summary.mean_delta,
-      0,
-    ) / results.length;
+    results.reduce((sum, result) => sum + result.paired_delta_summary.mean_delta, 0) /
+    results.length;
   return {
     meanDelta,
     invalidatedCount: results.filter((result) => result.invalidated).length,
   };
 }
 
-export function buildCandidateRecipe(
-  input: CandidateRecipeBuildInput,
-): CandidateRecipe {
+export function buildCandidateRecipe(input: CandidateRecipeBuildInput): CandidateRecipe {
   if (input.teacherRuntimes.length === 0) {
     throw new Error("Candidate recipes require at least one teacher runtime.");
   }
@@ -199,13 +195,10 @@ export function buildCandidateRecipe(
     ],
     hyperparameters: {
       ...stableHyperparameters(input.hyperparameters),
-      benchmark_mean_delta:
-        summarizeBenchmarkEvidence(input.benchmarkEvidence).meanDelta,
+      benchmark_mean_delta: summarizeBenchmarkEvidence(input.benchmarkEvidence).meanDelta,
       domain_pack_hash: computeStableContentHash({
         domainPackId: input.domainPack.domain_pack_id,
-        taskFamilies: input.domainPack.task_taxonomy.map(
-          (taskFamily) => taskFamily.task_family_id,
-        ),
+        taskFamilies: input.domainPack.task_taxonomy.map((taskFamily) => taskFamily.task_family_id),
       }),
     },
     grader_refs: dedupeArtifactRefs(input.graderRefs),
@@ -244,15 +237,10 @@ export function materializeCandidateRecipeArtifact(
       recipeType: recipe.recipe_type,
       teacherRuntimes: recipe.teacher_runtimes,
       inputDatasets: recipe.input_dataset_refs.map((ref) => ref.artifact_id),
-      benchmarkEvidence: input.benchmarkEvidence.map(
-        (result) => result.benchmark_result_id,
-      ),
+      benchmarkEvidence: input.benchmarkEvidence.map((result) => result.benchmark_result_id),
     }),
     producer: "niche.optimizer.candidate-recipe",
-    source_trace_refs: dedupeArtifactRefs([
-      ...recipe.evaluation_inputs,
-      ...recipe.promotion_inputs,
-    ])
+    source_trace_refs: dedupeArtifactRefs([...recipe.evaluation_inputs, ...recipe.promotion_inputs])
       .filter((ref) => ref.artifact_type === "run_trace")
       .map((ref) => ref.artifact_id),
     dataset_refs: recipe.input_dataset_refs.map((ref) => ref.artifact_id),

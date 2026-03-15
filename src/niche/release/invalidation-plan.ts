@@ -36,6 +36,7 @@ function needsRebuild(artifactType: Artifact["artifact_type"]): boolean {
     "retrieval_stack",
     "verifier_pack",
     "action_policy",
+    "student_model",
     "release_bundle",
     "domain_pack",
   ].includes(artifactType);
@@ -62,7 +63,8 @@ export function buildInvalidationPlan(params: {
         target_type: "artifact",
         target_id: record.ref.artifact_id,
         action: "rebuild",
-        reason: "Artifact is derived from revoked lineage and must be rebuilt from approved inputs.",
+        reason:
+          "Artifact is derived from revoked lineage and must be rebuilt from approved inputs.",
       });
     }
     if (params.impact.revoked_artifact_ids.includes(record.ref.artifact_id)) {

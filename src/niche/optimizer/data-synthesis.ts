@@ -2,10 +2,12 @@ import { computeStableContentHash } from "../benchmark/index.js";
 import { propagateDerivedRights } from "../domain/rights-propagation.js";
 import type {
   ArtifactRef,
+  ArtifactTeacherRolloutAuthority,
   ArtifactRightsState,
   DataZone,
   GovernedDataStatus,
 } from "../schema/index.js";
+import { getArtifactRecord, getParentsForArtifact } from "../store/index.js";
 
 export type SynthesisEmbargoPolicy = {
   embargo_active: boolean;
@@ -66,7 +68,26 @@ export type TeacherRolloutRequest = {
   blocked_reason?: string;
 };
 
+export type TeacherRolloutIntent = {
+  teacher_runtime: string;
+  objective: string;
+  task_family_id: string;
+  input_artifact_refs: ArtifactRef[];
+  max_examples: number;
+};
+
 type SynthesisPurpose = "synthetic" | "trace_derived" | "teacher_rollout";
+
+type AuthoritativeSynthesisSource = {
+  artifact_ref: ArtifactRef;
+  governed_data_status: GovernedDataStatus;
+};
+
+type AuthoritativeTeacherRolloutInput = {
+  artifact_ref: ArtifactRef;
+  governed_data_status: GovernedDataStatus;
+  teacher_rollout_authority: ArtifactTeacherRolloutAuthority;
+};
 
 function isProhibitedDataZone(zone: DataZone): boolean {
   return zone === "gold_eval" || zone === "hidden_eval" || zone === "quarantined";
@@ -75,12 +96,23 @@ function isProhibitedDataZone(zone: DataZone): boolean {
 export function assessSynthesisEligibility(params: {
   source: SynthesisSourceRecord;
   purpose: SynthesisPurpose;
+  env?: NodeJS.ProcessEnv;
 }): SynthesisEligibility {
-  const derivedRights = propagateDerivedRights([params.source.artifact_ref.rights_state])
-    .rightsState;
-  const dataZone = params.source.governed_data_status.data_zone;
+  const authoritativeSource = resolveAuthoritativeSynthesisSource(params.source, params.env);
+  if ("reason" in authoritativeSource) {
+    return {
+      allowed: false,
+      derived_rights: params.source.artifact_ref.rights_state,
+      reason: authoritativeSource.reason,
+    };
+  }
 
-  if (params.source.governed_data_status.quarantined || isProhibitedDataZone(dataZone)) {
+  const derivedRights = propagateDerivedRights([
+    authoritativeSource.artifact_ref.rights_state,
+  ]).rightsState;
+  const dataZone = authoritativeSource.governed_data_status.data_zone;
+
+  if (authoritativeSource.governed_data_status.quarantined || isProhibitedDataZone(dataZone)) {
     return {
       allowed: false,
       derived_rights: derivedRights,
@@ -139,6 +171,32 @@ export function assessSynthesisEligibility(params: {
   };
 }
 
+function resolveAuthoritativeSynthesisSource(
+  source: SynthesisSourceRecord,
+  env: NodeJS.ProcessEnv = process.env,
+): AuthoritativeSynthesisSource | { reason: string } {
+  const stored = getArtifactRecord(source.artifact_ref, env);
+  if (!stored) {
+    return {
+      reason: `Artifact ${source.artifact_ref.artifact_id} is not present in the store and cannot be reused for optimization.`,
+    };
+  }
+  if (getParentsForArtifact(stored.ref.artifact_id, env).length === 0) {
+    return {
+      reason: `Artifact ${stored.ref.artifact_id} has no authoritative lineage and is ineligible by default.`,
+    };
+  }
+  if (!stored.artifact.governed_data_status) {
+    return {
+      reason: `Artifact ${stored.ref.artifact_id} is missing store-backed governed data status.`,
+    };
+  }
+  return {
+    artifact_ref: stored.ref,
+    governed_data_status: stored.artifact.governed_data_status as GovernedDataStatus,
+  };
+}
+
 function buildSyntheticPrompt(source: SynthesisSourceRecord): string {
   return `Generate a grounded ${source.task_family_id} task using approved content: ${source.content}`;
 }
@@ -146,7 +204,11 @@ function buildSyntheticPrompt(source: SynthesisSourceRecord): string {
 export function generateSyntheticTaskInputs(params: {
   sources: SynthesisSourceRecord[];
   maxItems?: number;
-}): { synthetic_inputs: SyntheticTaskInput[]; blocked_sources: Array<{ source_artifact_id: string; reason: string }> } {
+  env?: NodeJS.ProcessEnv;
+}): {
+  synthetic_inputs: SyntheticTaskInput[];
+  blocked_sources: Array<{ source_artifact_id: string; reason: string }>;
+} {
   const syntheticInputs: SyntheticTaskInput[] = [];
   const blockedSources: Array<{ source_artifact_id: string; reason: string }> = [];
 
@@ -159,6 +221,7 @@ export function generateSyntheticTaskInputs(params: {
     const eligibility = assessSynthesisEligibility({
       source,
       purpose: "synthetic",
+      env: params.env,
     });
     if (!eligibility.allowed) {
       blockedSources.push({
@@ -167,19 +230,27 @@ export function generateSyntheticTaskInputs(params: {
       });
       continue;
     }
+    const authoritativeSource = resolveAuthoritativeSynthesisSource(source, params.env);
+    if ("reason" in authoritativeSource) {
+      blockedSources.push({
+        source_artifact_id: source.artifact_ref.artifact_id,
+        reason: authoritativeSource.reason,
+      });
+      continue;
+    }
 
     syntheticInputs.push({
       synthetic_input_id: computeStableContentHash({
-        artifactId: source.artifact_ref.artifact_id,
+        artifactId: authoritativeSource.artifact_ref.artifact_id,
         taskFamilyId: source.task_family_id,
         content: source.content,
       }),
-      source_artifact_id: source.artifact_ref.artifact_id,
+      source_artifact_id: authoritativeSource.artifact_ref.artifact_id,
       task_family_id: source.task_family_id,
       prompt: buildSyntheticPrompt(source),
       source_content_hash: computeStableContentHash(source.content),
       rights_state: eligibility.derived_rights,
-      data_zone: source.governed_data_status.data_zone,
+      data_zone: authoritativeSource.governed_data_status.data_zone,
     });
   }
 
@@ -192,7 +263,11 @@ export function generateSyntheticTaskInputs(params: {
 export function generateTraceDerivedExamples(params: {
   sources: SynthesisSourceRecord[];
   maxItems?: number;
-}): { examples: TraceDerivedExample[]; blocked_sources: Array<{ source_artifact_id: string; reason: string }> } {
+  env?: NodeJS.ProcessEnv;
+}): {
+  examples: TraceDerivedExample[];
+  blocked_sources: Array<{ source_artifact_id: string; reason: string }>;
+} {
   const examples: TraceDerivedExample[] = [];
   const blockedSources: Array<{ source_artifact_id: string; reason: string }> = [];
 
@@ -205,6 +280,7 @@ export function generateTraceDerivedExamples(params: {
     const eligibility = assessSynthesisEligibility({
       source,
       purpose: "trace_derived",
+      env: params.env,
     });
     if (!eligibility.allowed) {
       blockedSources.push({
@@ -213,16 +289,24 @@ export function generateTraceDerivedExamples(params: {
       });
       continue;
     }
+    const authoritativeSource = resolveAuthoritativeSynthesisSource(source, params.env);
+    if ("reason" in authoritativeSource) {
+      blockedSources.push({
+        source_artifact_id: source.artifact_ref.artifact_id,
+        reason: authoritativeSource.reason,
+      });
+      continue;
+    }
 
     examples.push({
       example_id: computeStableContentHash({
         traceId: source.trace_id,
-        artifactId: source.artifact_ref.artifact_id,
+        artifactId: authoritativeSource.artifact_ref.artifact_id,
         content: source.content,
         targetSummary: source.target_summary,
       }),
       trace_id: source.trace_id!,
-      source_artifact_id: source.artifact_ref.artifact_id,
+      source_artifact_id: authoritativeSource.artifact_ref.artifact_id,
       task_family_id: source.task_family_id,
       input_summary: source.content.slice(0, 240),
       target_summary: source.target_summary ?? source.content.slice(0, 120),
@@ -230,7 +314,7 @@ export function generateTraceDerivedExamples(params: {
         left.localeCompare(right),
       ),
       rights_state: eligibility.derived_rights,
-      data_zone: source.governed_data_status.data_zone,
+      data_zone: authoritativeSource.governed_data_status.data_zone,
     });
   }
 
@@ -246,17 +330,30 @@ export function buildTeacherRolloutRequest(params: {
   taskFamilyId: string;
   sources: SynthesisSourceRecord[];
   maxExamples: number;
+  env?: NodeJS.ProcessEnv;
 }): TeacherRolloutRequest {
   const sortedSources = [...params.sources].toSorted((left, right) =>
     left.artifact_ref.artifact_id.localeCompare(right.artifact_ref.artifact_id),
   );
-  const eligibleSources = sortedSources.filter((source) =>
-    assessSynthesisEligibility({ source, purpose: "teacher_rollout" }).allowed,
-  );
+  const eligibleSources = sortedSources.flatMap((source) => {
+    const eligibility = assessSynthesisEligibility({
+      source,
+      purpose: "teacher_rollout",
+      env: params.env,
+    });
+    if (!eligibility.allowed) {
+      return [];
+    }
+    const authoritativeSource = resolveAuthoritativeSynthesisSource(source, params.env);
+    return "reason" in authoritativeSource
+      ? []
+      : [{ artifact_ref: authoritativeSource.artifact_ref, original: source }];
+  });
 
-  const rightsLineage = (eligibleSources.length > 0 ? eligibleSources : sortedSources).map(
-    (source) => source.artifact_ref.rights_state,
-  );
+  const rightsLineage =
+    eligibleSources.length > 0
+      ? eligibleSources.map((source) => source.artifact_ref.rights_state)
+      : sortedSources.map((source) => source.artifact_ref.rights_state);
   const rightsState =
     rightsLineage.length > 0
       ? propagateDerivedRights(rightsLineage).rightsState
@@ -271,16 +368,17 @@ export function buildTeacherRolloutRequest(params: {
   const blockedReason =
     eligibleSources.length > 0
       ? undefined
-      : sortedSources
+      : (sortedSources
           .map(
             (source) =>
               assessSynthesisEligibility({
                 source,
                 purpose: "teacher_rollout",
+                env: params.env,
               }).reason,
           )
           .filter((value): value is string => Boolean(value))[0] ??
-        "Teacher rollout request is blocked by optimizer policy.";
+        "Teacher rollout request is blocked by optimizer policy.");
 
   return {
     rollout_request_id: computeStableContentHash({
@@ -297,6 +395,102 @@ export function buildTeacherRolloutRequest(params: {
     max_examples: params.maxExamples,
     rights_state: rightsState,
     embargo_status: eligibleSources.length > 0 ? "cleared" : "blocked",
+    blocked_reason: blockedReason,
+  };
+}
+
+function resolveAuthoritativeTeacherRolloutInput(
+  artifactRef: ArtifactRef,
+  env: NodeJS.ProcessEnv = process.env,
+): AuthoritativeTeacherRolloutInput | { reason: string } {
+  const stored = getArtifactRecord(artifactRef, env);
+  if (!stored) {
+    return {
+      reason: `Artifact ${artifactRef.artifact_id} is not present in the store and cannot be reused for teacher rollout.`,
+    };
+  }
+  if (getParentsForArtifact(stored.ref.artifact_id, env).length === 0) {
+    return {
+      reason: `Artifact ${stored.ref.artifact_id} has no authoritative lineage and is ineligible by default.`,
+    };
+  }
+  if (!stored.artifact.governed_data_status) {
+    return {
+      reason: `Artifact ${stored.ref.artifact_id} is missing store-backed governed data status.`,
+    };
+  }
+  if (!stored.artifact.teacher_rollout_authority) {
+    return {
+      reason: `Artifact ${stored.ref.artifact_id} is missing store-backed teacher rollout authority.`,
+    };
+  }
+  return {
+    artifact_ref: stored.ref,
+    governed_data_status: stored.artifact.governed_data_status as GovernedDataStatus,
+    teacher_rollout_authority: stored.artifact
+      .teacher_rollout_authority as ArtifactTeacherRolloutAuthority,
+  };
+}
+
+export function buildTeacherRolloutRequestFromIntent(params: {
+  intent: TeacherRolloutIntent;
+  env?: NodeJS.ProcessEnv;
+}): TeacherRolloutRequest {
+  const sortedRefs = [...params.intent.input_artifact_refs].toSorted((left, right) =>
+    left.artifact_id.localeCompare(right.artifact_id),
+  );
+  const resolvedInputs = sortedRefs.map((ref) =>
+    resolveAuthoritativeTeacherRolloutInput(ref, params.env),
+  );
+  const eligibleInputs = resolvedInputs.filter(
+    (input): input is AuthoritativeTeacherRolloutInput =>
+      !("reason" in input) && input.teacher_rollout_authority.embargo_status === "cleared",
+  );
+  const resolvedRefs = resolvedInputs.filter(
+    (input): input is AuthoritativeTeacherRolloutInput => !("reason" in input),
+  );
+  const rightsLineage = (eligibleInputs.length > 0 ? eligibleInputs : resolvedRefs).map(
+    (input) => input.artifact_ref.rights_state,
+  );
+  const rightsState =
+    rightsLineage.length > 0
+      ? propagateDerivedRights(rightsLineage).rightsState
+      : {
+          rights_to_store: false,
+          rights_to_train: false,
+          rights_to_benchmark: false,
+          rights_to_derive: false,
+          rights_to_distill: false,
+          rights_to_generate_synthetic_from: false,
+        };
+  const blockedReason =
+    eligibleInputs.length > 0
+      ? undefined
+      : (resolvedInputs
+          .map((input) =>
+            "reason" in input
+              ? input.reason
+              : (input.teacher_rollout_authority.blocked_reason ??
+                "Teacher rollout inputs remain under authoritative embargo."),
+          )
+          .filter((value): value is string => Boolean(value))[0] ??
+        "Teacher rollout request is blocked by optimizer policy.");
+
+  return {
+    rollout_request_id: computeStableContentHash({
+      teacherRuntime: params.intent.teacher_runtime,
+      objective: params.intent.objective,
+      taskFamilyId: params.intent.task_family_id,
+      sourceIds: sortedRefs.map((source) => source.artifact_id),
+      maxExamples: params.intent.max_examples,
+    }),
+    teacher_runtime: params.intent.teacher_runtime,
+    objective: params.intent.objective,
+    task_family_id: params.intent.task_family_id,
+    input_artifact_refs: eligibleInputs.map((input) => input.artifact_ref),
+    max_examples: params.intent.max_examples,
+    rights_state: rightsState,
+    embargo_status: eligibleInputs.length > 0 ? "cleared" : "blocked",
     blocked_reason: blockedReason,
   };
 }

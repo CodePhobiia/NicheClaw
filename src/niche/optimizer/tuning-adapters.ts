@@ -22,6 +22,35 @@ export interface ProviderNativeTuningAdapter {
   }): ProviderNativeTuningJobPlan;
 }
 
+function buildAdapterJobPlan(params: {
+  adapter: ProviderNativeTuningAdapter;
+  capability: ProviderTuningCapability;
+  candidateRecipeRef: ArtifactRef;
+  trainingArtifactRefs: ArtifactRef[];
+  adapterId: string;
+}): ProviderNativeTuningJobPlan {
+  if (!params.adapter.supports(params.capability)) {
+    throw new Error(
+      `Capability ${params.capability.capability_id} does not support ${params.adapter.provider} native tuning.`,
+    );
+  }
+
+  return {
+    adapter_id: params.adapterId,
+    provider: params.adapter.provider,
+    model_family: params.capability.model_family,
+    metadata_quality: params.capability.metadata_quality,
+    required_credentials: [...params.capability.required_credentials],
+    training_artifact_refs: [...params.trainingArtifactRefs].toSorted((left, right) =>
+      left.artifact_id.localeCompare(right.artifact_id),
+    ),
+    candidate_recipe_ref: params.candidateRecipeRef,
+    notes:
+      params.capability.notes ??
+      "Provider-native tuning job plan only; execution remains out of scope.",
+  };
+}
+
 export class OpenAiNativeTuningAdapter implements ProviderNativeTuningAdapter {
   readonly provider = "openai";
 
@@ -34,31 +63,66 @@ export class OpenAiNativeTuningAdapter implements ProviderNativeTuningAdapter {
     candidateRecipeRef: ArtifactRef;
     trainingArtifactRefs: ArtifactRef[];
   }): ProviderNativeTuningJobPlan {
-    if (!this.supports(params.capability)) {
-      throw new Error(
-        `Capability ${params.capability.capability_id} does not support ${this.provider} native tuning.`,
-      );
-    }
+    return buildAdapterJobPlan({
+      adapter: this,
+      capability: params.capability,
+      candidateRecipeRef: params.candidateRecipeRef,
+      trainingArtifactRefs: params.trainingArtifactRefs,
+      adapterId: "openai-native-tuning",
+    });
+  }
+}
 
-    return {
-      adapter_id: "openai-native-tuning",
-      provider: this.provider,
-      model_family: params.capability.model_family,
-      metadata_quality: params.capability.metadata_quality,
-      required_credentials: [...params.capability.required_credentials],
-      training_artifact_refs: [...params.trainingArtifactRefs].toSorted((left, right) =>
-        left.artifact_id.localeCompare(right.artifact_id),
-      ),
-      candidate_recipe_ref: params.candidateRecipeRef,
-      notes:
-        params.capability.notes ??
-        "Provider-native tuning job plan only; execution remains out of scope.",
-    };
+export class AnthropicNativeTuningAdapter implements ProviderNativeTuningAdapter {
+  readonly provider = "anthropic";
+
+  supports(capability: ProviderTuningCapability): boolean {
+    return capability.provider === this.provider && capability.native_tuning_available;
+  }
+
+  buildJobPlan(params: {
+    capability: ProviderTuningCapability;
+    candidateRecipeRef: ArtifactRef;
+    trainingArtifactRefs: ArtifactRef[];
+  }): ProviderNativeTuningJobPlan {
+    return buildAdapterJobPlan({
+      adapter: this,
+      capability: params.capability,
+      candidateRecipeRef: params.candidateRecipeRef,
+      trainingArtifactRefs: params.trainingArtifactRefs,
+      adapterId: "anthropic-native-tuning",
+    });
+  }
+}
+
+export class GoogleNativeTuningAdapter implements ProviderNativeTuningAdapter {
+  readonly provider = "google";
+
+  supports(capability: ProviderTuningCapability): boolean {
+    return capability.provider === this.provider && capability.native_tuning_available;
+  }
+
+  buildJobPlan(params: {
+    capability: ProviderTuningCapability;
+    candidateRecipeRef: ArtifactRef;
+    trainingArtifactRefs: ArtifactRef[];
+  }): ProviderNativeTuningJobPlan {
+    return buildAdapterJobPlan({
+      adapter: this,
+      capability: params.capability,
+      candidateRecipeRef: params.candidateRecipeRef,
+      trainingArtifactRefs: params.trainingArtifactRefs,
+      adapterId: "google-native-tuning",
+    });
   }
 }
 
 export function getDefaultTuningAdapters(): ProviderNativeTuningAdapter[] {
-  return [new OpenAiNativeTuningAdapter()];
+  return [
+    new AnthropicNativeTuningAdapter(),
+    new GoogleNativeTuningAdapter(),
+    new OpenAiNativeTuningAdapter(),
+  ];
 }
 
 export function buildProviderNativeTuningJobPlan(params: {

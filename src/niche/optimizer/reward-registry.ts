@@ -4,6 +4,8 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import { propagateDerivedRights } from "../domain/rights-propagation.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   ArtifactRefSchema,
   IdentifierString,
@@ -14,7 +16,6 @@ import {
   type RewardArtifact,
 } from "../schema/index.js";
 import { resolveNicheStoreRoots } from "../store/index.js";
-import { readJsonFileStrict } from "../json.js";
 
 export const RewardCalibrationMetadataSchema = Type.Object(
   {
@@ -111,11 +112,7 @@ export function createRewardArtifact(
     rewardArtifact,
     "reward artifact",
   );
-  return writeUniqueRecord(
-    resolveRewardsRoot(env),
-    validated.reward_artifact_id,
-    validated,
-  );
+  return writeUniqueRecord(resolveRewardsRoot(env), validated.reward_artifact_id, validated);
 }
 
 export function getRewardArtifact(
@@ -129,9 +126,7 @@ export function getRewardArtifact(
   return assertValue(RewardArtifactSchema, REWARD_CACHE_KEY, raw, "reward artifact");
 }
 
-export function listRewardArtifacts(
-  env: NodeJS.ProcessEnv = process.env,
-): RewardArtifact[] {
+export function listRewardArtifacts(env: NodeJS.ProcessEnv = process.env): RewardArtifact[] {
   return listRecords<RewardArtifact>(resolveRewardsRoot(env)).map((record) =>
     assertValue(RewardArtifactSchema, REWARD_CACHE_KEY, record, "reward artifact"),
   );
@@ -176,14 +171,13 @@ export function getRewardCalibrationMetadata(
 export function listRewardCalibrationMetadata(
   env: NodeJS.ProcessEnv = process.env,
 ): RewardCalibrationMetadata[] {
-  return listRecords<RewardCalibrationMetadata>(resolveRewardCalibrationsRoot(env)).map(
-    (record) =>
-      assertValue(
-        RewardCalibrationMetadataSchema,
-        REWARD_CALIBRATION_CACHE_KEY,
-        record,
-        "reward calibration metadata",
-      ),
+  return listRecords<RewardCalibrationMetadata>(resolveRewardCalibrationsRoot(env)).map((record) =>
+    assertValue(
+      RewardCalibrationMetadataSchema,
+      REWARD_CALIBRATION_CACHE_KEY,
+      record,
+      "reward calibration metadata",
+    ),
   );
 }
 
@@ -198,6 +192,19 @@ export function buildRewardArtifactRef(params: {
   rewardArtifact: RewardArtifact;
   contentHash: string;
 }): ArtifactRef {
+  const derivedRights =
+    params.rewardArtifact.training_inputs.length > 0
+      ? propagateDerivedRights(
+          params.rewardArtifact.training_inputs.map((input) => input.rights_state),
+        ).rightsState
+      : {
+          rights_to_store: false,
+          rights_to_train: false,
+          rights_to_benchmark: false,
+          rights_to_derive: false,
+          rights_to_distill: false,
+          rights_to_generate_synthetic_from: false,
+        };
   return assertValue(
     ArtifactRefSchema,
     "optimizer-reward-artifact-ref",
@@ -206,14 +213,7 @@ export function buildRewardArtifactRef(params: {
       artifact_type: "reward",
       version: params.rewardArtifact.version,
       content_hash: params.contentHash,
-      rights_state: params.rewardArtifact.training_inputs[0]?.rights_state ?? {
-        rights_to_store: false,
-        rights_to_train: false,
-        rights_to_benchmark: false,
-        rights_to_derive: false,
-        rights_to_distill: false,
-        rights_to_generate_synthetic_from: false,
-      },
+      rights_state: derivedRights,
       created_at: params.rewardArtifact.created_at,
     },
     "reward artifact ref",

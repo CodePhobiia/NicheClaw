@@ -59,9 +59,7 @@ function metadataQualitySatisfies(
 }
 
 export function selectTuningPlan(input: TuningPlannerInput): TuningPlan {
-  const availableArtifactTypes = input.training_artifact_refs.map(
-    (ref) => ref.artifact_type,
-  );
+  const availableArtifactTypes = input.training_artifact_refs.map((ref) => ref.artifact_type);
   const providerNativeAllowed =
     input.policy.allow_provider_native &&
     metadataQualitySatisfies(
@@ -89,10 +87,9 @@ export function selectTuningPlan(input: TuningPlannerInput): TuningPlan {
   if (input.distillation_available && input.rights_state.rights_to_distill) {
     return {
       selected_lane: "distillation",
-      reason:
-        input.capability.native_tuning_available
-          ? "Provider-native tuning is disallowed by policy or metadata quality, so distillation is selected."
-          : "Provider-native tuning is unavailable, so distillation is selected.",
+      reason: input.capability.native_tuning_available
+        ? "Provider-native tuning is disallowed by policy or metadata quality, so distillation is selected."
+        : "Provider-native tuning is unavailable, so distillation is selected.",
     };
   }
 

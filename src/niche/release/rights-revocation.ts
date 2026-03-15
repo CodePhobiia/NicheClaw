@@ -12,16 +12,14 @@ export type RightsRevocationImpact = {
   reasons: string[];
 };
 
-function impactedManifest(
-  manifest: CandidateManifest,
-  impactedArtifactIds: Set<string>,
-): boolean {
+function impactedManifest(manifest: CandidateManifest, impactedArtifactIds: Set<string>): boolean {
   return [
     manifest.domain_pack_id,
     manifest.action_policy_id,
     manifest.retrieval_stack_id,
     manifest.verifier_pack_id,
     manifest.candidate_recipe,
+    ...manifest.optional_student_model_ids,
   ].some((artifactId) => impactedArtifactIds.has(artifactId));
 }
 
@@ -48,8 +46,8 @@ export function traceRightsRevocationImpact(params: {
   const revokedSourceIds = [...new Set(params.revokedSourceIds ?? [])].toSorted((left, right) =>
     left.localeCompare(right),
   );
-  const revokedArtifactIds = [...new Set(params.revokedArtifactIds ?? [])].toSorted(
-    (left, right) => left.localeCompare(right),
+  const revokedArtifactIds = [...new Set(params.revokedArtifactIds ?? [])].toSorted((left, right) =>
+    left.localeCompare(right),
   );
   const rootIds = [...new Set([...revokedSourceIds, ...revokedArtifactIds])];
   const descendantIds = collectDescendantArtifactIds(rootIds, params.env);
@@ -58,10 +56,7 @@ export function traceRightsRevocationImpact(params: {
     ...getArtifactRecordsByIds(descendantIds, params.env).map((record) => record.ref.artifact_id),
   ]);
 
-  const impactedCandidateRecipeIds = getArtifactRecordsByIds(
-    [...impactedArtifactIds],
-    params.env,
-  )
+  const impactedCandidateRecipeIds = getArtifactRecordsByIds([...impactedArtifactIds], params.env)
     .filter((record) => record.ref.artifact_type === "candidate_recipe")
     .map((record) => record.ref.artifact_id)
     .toSorted((left, right) => left.localeCompare(right));

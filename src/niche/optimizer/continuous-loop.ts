@@ -1,10 +1,7 @@
 import { computeStableContentHash } from "../benchmark/index.js";
 import type { SpecializationLane } from "../schema/index.js";
 import type { RefreshTriggerSummary } from "./drift-signals.js";
-import {
-  evaluateRefreshEligibility,
-  type RefreshTraceCandidate,
-} from "./refresh-policy.js";
+import { evaluateRefreshEligibility, type RefreshTraceCandidate } from "./refresh-policy.js";
 
 export type FailureCluster = {
   cluster_id: string;
@@ -105,10 +102,7 @@ export function planContinuousOptimizationLoop(params: {
       created_at: params.createdAt,
       status: "blocked",
       selected_lane: params.selectedLane,
-      reasons: [
-        ...params.driftTrigger.reasons,
-        ...new Set(rejectionReasons),
-      ],
+      reasons: [...params.driftTrigger.reasons, ...new Set(rejectionReasons)],
       selected_trace_ids: [],
       blocked_trace_ids: blockedTraceIds,
       failure_clusters: [],

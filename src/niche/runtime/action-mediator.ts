@@ -1,20 +1,21 @@
 import { evaluateActionGuard, selectActionProposal } from "../action-policy/index.js";
-import { evaluateRepairDecision, type RepairPolicyDecision } from "../action-policy/repair-policy.js";
+import {
+  evaluateRepairDecision,
+  type RepairPolicyDecision,
+} from "../action-policy/repair-policy.js";
 import {
   buildActionCandidatesForTool,
   getNicheRunTraceContext,
   recordActionProposalForRun,
 } from "./run-trace-capture.js";
 
-export type NicheActionMediationResult =
-  | null
-  | {
-      blocked: boolean;
-      reason?: string;
-      proposalId: string;
-      repairDecision: RepairPolicyDecision;
-      params: unknown;
-    };
+export type NicheActionMediationResult = null | {
+  blocked: boolean;
+  reason?: string;
+  proposalId: string;
+  repairDecision: RepairPolicyDecision;
+  params: unknown;
+};
 
 export function mediateNicheToolCall(params: {
   runId?: string;
@@ -34,8 +35,7 @@ export function mediateNicheToolCall(params: {
     toolName: params.toolName,
     allowedTools: context.actionPolicy.allowedTools,
     schemaAvailable: true,
-    permissionAllowed:
-      !context.actionPolicy.permissionDeniedTools?.includes(params.toolName),
+    permissionAllowed: !context.actionPolicy.permissionDeniedTools?.includes(params.toolName),
     domainConstraintViolations:
       context.actionPolicy.domainConstraintViolationsByTool?.[params.toolName] ?? [],
     releaseConstraintViolations:

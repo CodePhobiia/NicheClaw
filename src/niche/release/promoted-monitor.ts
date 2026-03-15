@@ -1,27 +1,44 @@
+import type { Static } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import {
+  type BenchmarkCaseKind,
+  DriftThresholdSetSchema,
   PromotedReleaseMonitorSchema,
   type DriftThresholdSet,
   type PromotedReleaseMonitor,
 } from "../schema/index.js";
 
-export type PromotedMonitorCadenceDefaults = {
-  shadow_recheck_interval_hours: number;
-  evaluation_window_size: number;
-  alert_hysteresis_windows: number;
-  rollback_cooldown_hours: number;
-};
+export const PromotedMonitorCadenceDefaultsSchema = Type.Object(
+  {
+    shadow_recheck_interval_hours: Type.Number({ minimum: 0 }),
+    evaluation_window_size: Type.Number({ minimum: 1 }),
+    alert_hysteresis_windows: Type.Number({ minimum: 1 }),
+    rollback_cooldown_hours: Type.Number({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
 
-export type PromotedMonitorDefinition = {
-  monitor: PromotedReleaseMonitor;
-  cadence_defaults: PromotedMonitorCadenceDefaults;
-};
+export const PromotedMonitorDefinitionSchema = Type.Object(
+  {
+    monitor: PromotedReleaseMonitorSchema,
+    cadence_defaults: PromotedMonitorCadenceDefaultsSchema,
+  },
+  { additionalProperties: false },
+);
 
-export type PromotedMonitorObservation = {
-  observed_drift: DriftThresholdSet;
-  consecutive_breach_windows: number;
-  hours_since_last_rollback?: number;
-};
+export const PromotedMonitorObservationSchema = Type.Object(
+  {
+    observed_drift: DriftThresholdSetSchema,
+    consecutive_breach_windows: Type.Number({ minimum: 0 }),
+    hours_since_last_rollback: Type.Optional(Type.Number({ minimum: 0 })),
+  },
+  { additionalProperties: false },
+);
+
+export type PromotedMonitorCadenceDefaults = Static<typeof PromotedMonitorCadenceDefaultsSchema>;
+export type PromotedMonitorDefinition = Static<typeof PromotedMonitorDefinitionSchema>;
+export type PromotedMonitorObservation = Static<typeof PromotedMonitorObservationSchema>;
 
 export type PromotedMonitorAssessment = {
   should_rollback: boolean;
@@ -36,6 +53,15 @@ export const DEFAULT_PROMOTED_MONITOR_CADENCE: PromotedMonitorCadenceDefaults = 
   alert_hysteresis_windows: 2,
   rollback_cooldown_hours: 24,
 };
+
+function collectBreachedDimensions(params: {
+  thresholds: DriftThresholdSet;
+  observedDrift: DriftThresholdSet;
+}): Array<keyof DriftThresholdSet> {
+  return (Object.entries(params.thresholds) as Array<[keyof DriftThresholdSet, number]>)
+    .filter(([key, threshold]) => params.observedDrift[key] > threshold)
+    .map(([key]) => key);
+}
 
 function assertPromotedMonitor(monitor: PromotedReleaseMonitor): PromotedReleaseMonitor {
   const validation = validateJsonSchemaValue({
@@ -57,6 +83,7 @@ export function createPromotedReleaseMonitorDefinition(params: {
   driftThresholds: DriftThresholdSet;
   verifierDriftThresholds: DriftThresholdSet;
   graderDriftThresholds: DriftThresholdSet;
+  requiredCaseKinds?: BenchmarkCaseKind[];
   cadenceDefaults?: Partial<PromotedMonitorCadenceDefaults>;
 }): PromotedMonitorDefinition {
   const cadenceDefaults = {
@@ -69,6 +96,7 @@ export function createPromotedReleaseMonitorDefinition(params: {
       promoted_release_id: params.promotedReleaseId,
       baseline_manifest_id: params.baselineManifestId,
       candidate_manifest_id: params.candidateManifestId,
+      required_case_kinds: params.requiredCaseKinds ?? ["atomic_case"],
       shadow_recheck_policy: {
         policy_id: `${params.promotedReleaseId}-shadow-recheck`,
         summary: `Re-run shadow checks every ${cadenceDefaults.shadow_recheck_interval_hours} hours across a ${cadenceDefaults.evaluation_window_size}-window evaluation horizon.`,
@@ -93,12 +121,22 @@ export function assessPromotedReleaseMonitor(params: {
   definition: PromotedMonitorDefinition;
   observation: PromotedMonitorObservation;
 }): PromotedMonitorAssessment {
-  const thresholdEntries = Object.entries(
-    params.definition.monitor.drift_thresholds,
-  ) as Array<[keyof DriftThresholdSet, number]>;
-  const breachedDimensions = thresholdEntries
-    .filter(([key, threshold]) => params.observation.observed_drift[key] > threshold)
-    .map(([key]) => key);
+  const breachedDimensions = [
+    ...new Set([
+      ...collectBreachedDimensions({
+        thresholds: params.definition.monitor.drift_thresholds,
+        observedDrift: params.observation.observed_drift,
+      }),
+      ...collectBreachedDimensions({
+        thresholds: params.definition.monitor.verifier_drift_thresholds,
+        observedDrift: params.observation.observed_drift,
+      }),
+      ...collectBreachedDimensions({
+        thresholds: params.definition.monitor.grader_drift_thresholds,
+        observedDrift: params.observation.observed_drift,
+      }),
+    ]),
+  ].toSorted((left, right) => left.localeCompare(right));
   const cooldownActive =
     params.observation.hours_since_last_rollback !== undefined &&
     params.observation.hours_since_last_rollback <
@@ -113,7 +151,6 @@ export function assessPromotedReleaseMonitor(params: {
     should_rollback: shouldRollback,
     cooldown_active: cooldownActive,
     breached_dimensions: breachedDimensions,
-    shadow_recheck_due_in_hours:
-      params.definition.cadence_defaults.shadow_recheck_interval_hours,
+    shadow_recheck_due_in_hours: params.definition.cadence_defaults.shadow_recheck_interval_hours,
   };
 }

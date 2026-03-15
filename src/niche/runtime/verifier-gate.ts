@@ -2,6 +2,8 @@ import type { ReplyPayload } from "../../auto-reply/types.js";
 import { runVerifierPack, type VerifierDecision } from "../verifier/index.js";
 import {
   getNicheRunTraceContext,
+  markNicheVerifierPhaseFinished,
+  markNicheVerifierPhaseStarted,
   recordVerifierDecisionForRun,
 } from "./run-trace-capture.js";
 
@@ -50,16 +52,11 @@ function payloadHasGateMetadata(payload: ReplyPayload): boolean {
   return Boolean(metadata?.decisionId);
 }
 
-export function payloadsAlreadyCarryVerifierGate(
-  payloads: ReplyPayload[],
-): boolean {
+export function payloadsAlreadyCarryVerifierGate(payloads: ReplyPayload[]): boolean {
   return payloads.some((payload) => payloadHasGateMetadata(payload));
 }
 
-function annotatePayload(
-  payload: ReplyPayload,
-  metadata: GateChannelData,
-): ReplyPayload {
+function annotatePayload(payload: ReplyPayload, metadata: GateChannelData): ReplyPayload {
   return {
     ...payload,
     channelData: {
@@ -176,11 +173,7 @@ export function maybeRunNicheVerifierGate(params: {
   }
 
   const context = getNicheRunTraceContext(params.runId);
-  if (
-    !context?.verifierPackConfig ||
-    !context.domainPack ||
-    !context.sourceAccessManifest
-  ) {
+  if (!context?.verifierPackConfig || !context.domainPack || !context.sourceAccessManifest) {
     return null;
   }
 
@@ -189,19 +182,26 @@ export function maybeRunNicheVerifierGate(params: {
     .filter((value) => value.length > 0)
     .join("\n\n");
 
-  const decision = runVerifierPack({
-    config: context.verifierPackConfig,
-    input: {
-      run_id: params.runId,
-      niche_program_id: context.nicheProgramId,
-      candidate_output: combinedText,
-      output_format: inferOutputFormat(params.payloads),
-      domain_pack: context.domainPack,
-      source_access_manifest: context.sourceAccessManifest,
-      evidence_bundle_refs: context.evidenceBundleRefs ?? [],
-      checked_at: params.checkedAt,
-    },
-  });
+  markNicheVerifierPhaseStarted(params.runId, params.checkedAt);
+  const decision = (() => {
+    try {
+      return runVerifierPack({
+        config: context.verifierPackConfig,
+        input: {
+          run_id: params.runId,
+          niche_program_id: context.nicheProgramId,
+          candidate_output: combinedText,
+          output_format: inferOutputFormat(params.payloads),
+          domain_pack: context.domainPack,
+          source_access_manifest: context.sourceAccessManifest,
+          evidence_bundle_refs: context.evidenceBundleRefs ?? [],
+          checked_at: params.checkedAt,
+        },
+      });
+    } finally {
+      markNicheVerifierPhaseFinished(params.runId, new Date().toISOString());
+    }
+  })();
   recordVerifierDecisionForRun(params.runId, decision);
   return applyVerifierGate({
     payloads: params.payloads,

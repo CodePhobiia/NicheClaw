@@ -6,6 +6,7 @@ export {
 } from "./candidate-recipe.js";
 export {
   assessSynthesisEligibility,
+  buildTeacherRolloutRequestFromIntent,
   buildTeacherRolloutRequest,
   generateSyntheticTaskInputs,
   generateTraceDerivedExamples,
@@ -13,6 +14,7 @@ export {
   type SynthesisEligibility,
   type SynthesisSourceRecord,
   type SyntheticTaskInput,
+  type TeacherRolloutIntent,
   type TeacherRolloutRequest,
   type TraceDerivedExample,
 } from "./data-synthesis.js";
@@ -32,6 +34,13 @@ export {
   type OptimizerJobType,
 } from "./job-model.js";
 export {
+  executeOptimizerJob,
+  type CandidateGenerationExecutor,
+  type CandidateGenerationOutput,
+  type OptimizerJobExecutionResult,
+} from "./job-executor.js";
+export { executeCandidateGeneration } from "./candidate-generation-executor.js";
+export {
   planCandidateGenerationJob,
   planEvaluationPreparationJob,
   planTeacherRolloutJob,
@@ -49,14 +58,19 @@ export {
   type RewardCalibrationMetadata,
 } from "./reward-registry.js";
 export {
+  AnthropicNativeTuningAdapter,
   buildProviderNativeTuningJobPlan,
   getDefaultTuningAdapters,
+  GoogleNativeTuningAdapter,
   OpenAiNativeTuningAdapter,
   type ProviderNativeTuningAdapter,
   type ProviderNativeTuningJobPlan,
 } from "./tuning-adapters.js";
 export {
   canPlanProviderNativeTuning,
+  createAnthropicTuningCapability,
+  createGoogleTuningCapability,
+  createOpenAiTuningCapability,
   createProviderTuningCapability,
   type ProviderTuningCapability,
 } from "./tuning-capabilities.js";
@@ -71,10 +85,7 @@ export {
   type CandidateRefreshPlan,
   type FailureCluster,
 } from "./continuous-loop.js";
-export {
-  buildRefreshTriggerSummary,
-  type RefreshTriggerSummary,
-} from "./drift-signals.js";
+export { buildRefreshTriggerSummary, type RefreshTriggerSummary } from "./drift-signals.js";
 export {
   evaluateRefreshEligibility,
   type RefreshEligibility,

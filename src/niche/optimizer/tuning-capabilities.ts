@@ -46,6 +46,60 @@ export function createProviderTuningCapability(params: {
   };
 }
 
+export function createOpenAiTuningCapability(
+  overrides?: Partial<Omit<ProviderTuningCapability, "provider">>,
+): ProviderTuningCapability {
+  return createProviderTuningCapability({
+    capabilityId: overrides?.capability_id ?? "openai-gpt4o-finetune",
+    provider: "openai",
+    modelFamily: overrides?.model_family ?? "gpt-4o",
+    nativeTuningAvailable: overrides?.native_tuning_available ?? true,
+    supportedArtifactTypes: (overrides?.supported_artifact_types as ArtifactType[]) ?? [
+      "dataset",
+      "prompt_asset",
+    ],
+    metadataQuality: overrides?.metadata_quality ?? "release_label_only",
+    requiredCredentials: overrides?.required_credentials ?? ["OPENAI_API_KEY"],
+    notes: overrides?.notes ?? "OpenAI fine-tuning via the fine-tuning API.",
+  });
+}
+
+export function createAnthropicTuningCapability(
+  overrides?: Partial<Omit<ProviderTuningCapability, "provider">>,
+): ProviderTuningCapability {
+  return createProviderTuningCapability({
+    capabilityId: overrides?.capability_id ?? "anthropic-claude-finetune",
+    provider: "anthropic",
+    modelFamily: overrides?.model_family ?? "claude-sonnet",
+    nativeTuningAvailable: overrides?.native_tuning_available ?? true,
+    supportedArtifactTypes: (overrides?.supported_artifact_types as ArtifactType[]) ?? [
+      "dataset",
+      "prompt_asset",
+    ],
+    metadataQuality: overrides?.metadata_quality ?? "release_label_only",
+    requiredCredentials: overrides?.required_credentials ?? ["ANTHROPIC_API_KEY"],
+    notes: overrides?.notes ?? "Anthropic fine-tuning via the fine-tuning API.",
+  });
+}
+
+export function createGoogleTuningCapability(
+  overrides?: Partial<Omit<ProviderTuningCapability, "provider">>,
+): ProviderTuningCapability {
+  return createProviderTuningCapability({
+    capabilityId: overrides?.capability_id ?? "google-gemini-finetune",
+    provider: "google",
+    modelFamily: overrides?.model_family ?? "gemini-2.0",
+    nativeTuningAvailable: overrides?.native_tuning_available ?? true,
+    supportedArtifactTypes: (overrides?.supported_artifact_types as ArtifactType[]) ?? [
+      "dataset",
+      "prompt_asset",
+    ],
+    metadataQuality: overrides?.metadata_quality ?? "release_label_only",
+    requiredCredentials: overrides?.required_credentials ?? ["GOOGLE_API_KEY"],
+    notes: overrides?.notes ?? "Google fine-tuning via the Gemini tuning API.",
+  });
+}
+
 export function canPlanProviderNativeTuning(params: {
   capability: ProviderTuningCapability;
   rightsState: ArtifactRightsState;

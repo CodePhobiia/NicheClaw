@@ -10,6 +10,9 @@ export {
 } from "./policy-engine.js";
 export {
   DEFAULT_PROMOTED_MONITOR_CADENCE,
+  PromotedMonitorCadenceDefaultsSchema,
+  PromotedMonitorDefinitionSchema,
+  PromotedMonitorObservationSchema,
   assessPromotedReleaseMonitor,
   createPromotedReleaseMonitorDefinition,
   type PromotedMonitorAssessment,
@@ -24,7 +27,15 @@ export {
   type InvalidationPlanAction,
   type InvalidationTargetType,
 } from "./invalidation-plan.js";
+export { traceRightsRevocationImpact, type RightsRevocationImpact } from "./rights-revocation.js";
 export {
-  traceRightsRevocationImpact,
-  type RightsRevocationImpact,
-} from "./rights-revocation.js";
+  actuateReleaseDecision,
+  executeRollback,
+  type ReleaseActuationResult,
+  type RollbackResult,
+} from "./release-controller.js";
+export {
+  runMonitorAssessmentCycle,
+  type MonitorCycleResult,
+  type MonitorObservationCollector,
+} from "./monitor-service.js";
