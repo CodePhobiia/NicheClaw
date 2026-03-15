@@ -151,6 +151,12 @@ jobs:
             task: extensions
             command: pnpm test:extensions
           - runtime: node
+            task: niche
+            command: pnpm test:niche
+          - runtime: node
+            task: niche-quality
+            command: pnpm lint:niche:no-type-any
+          - runtime: node
             task: protocol
             command: pnpm protocol:check
           - runtime: bun

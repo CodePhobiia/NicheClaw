@@ -24,6 +24,12 @@ Docs: https://docs.openclaw.ai
 - macOS/onboarding: detect when remote gateways need a shared auth token, explain where to find it on the gateway host, and clarify when a successful check used paired-device auth instead. (#43100) Thanks @ngutman.
 - Onboarding/Ollama: add first-class Ollama setup with Local or Cloud + Local modes, browser-based cloud sign-in, curated model suggestions, and cloud-model handling that skips unnecessary local pulls. (#41529) Thanks @BruceMacD.
 - Memory: add opt-in multimodal image and audio indexing for `memorySearch.extraPaths` with Gemini `gemini-embedding-2-preview`, strict fallback gating, and scope-based reindexing. (#43460) Thanks @gumadeiras.
+- NicheClaw: add governed AI agent specialization framework with CLI commands for creating niche programs, compiling domain packs, readiness checks, benchmarking, releasing, and optimizing (`openclaw niche`).
+- NicheClaw/runtime: add active-stack resolution with canary/shadow traffic routing, planner injection, tool ranking, constraint enforcement, and verifier gating.
+- NicheClaw/benchmark: add live and offline benchmark execution with atomic and episode case runners, contamination detection, and paired delta analysis.
+- NicheClaw/release: add promotion controller with policy engine, drift monitoring, rollback support, and invalidation planning.
+- NicheClaw/optimizer: add candidate generation, data synthesis, reward registry, tuning adapters for Anthropic/Google/OpenAI, and continuous optimization loop.
+- NicheClaw/UI: add niche programs, benchmarks, and runtime dashboard views to the gateway control UI.
 
 ### Breaking
 
