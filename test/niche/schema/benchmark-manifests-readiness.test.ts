@@ -152,6 +152,15 @@ function makeCandidateManifest(): CandidateManifest {
     action_policy_id: "repo-ci-action-policy-v1",
     retrieval_stack_id: "repo-ci-retrieval-stack-v1",
     verifier_pack_id: "repo-ci-verifier-pack-v1",
+    tool_catalog_version: "2026.3.12",
+    tool_allowlist: ["read", "exec", "apply_patch"],
+    tool_contract_version: "2026.3.12",
+    retrieval_config: {
+      retrieval_policy: "baseline",
+    },
+    verifier_config: {
+      verifier_pack: "baseline",
+    },
     optional_student_model_ids: [],
     candidate_recipe: "repo-ci-candidate-recipe-v1",
   };
@@ -272,7 +281,8 @@ describe("benchmark schemas", () => {
         mode: "offline_gold",
         baseline_arm_id: "baseline-arm",
         candidate_arm_id: "candidate-arm",
-        provider_metadata_quality: "exact_snapshot",
+        baseline_provider_metadata_quality: "exact_snapshot",
+        candidate_provider_metadata_quality: "exact_snapshot",
         primary_metric: "task_success",
         case_count: 120,
         paired_delta_summary: {
@@ -289,6 +299,7 @@ describe("benchmark schemas", () => {
             case_count: 60,
             score_mean: 0.92,
             hard_fail_rate: 0.01,
+            mean_delta: 0.17,
           },
         ],
         contamination_audit_summary: {
@@ -316,6 +327,13 @@ describe("manifest schemas", () => {
 
     expect(areManifestsBenchmarkComparable(baseline, candidate)).toBe(true);
 
+    expect(
+      areManifestsBenchmarkComparable(baseline, {
+        ...candidate,
+        prompt_asset_version: "candidate-prompt-v2",
+      }),
+    ).toBe(true);
+
     const mismatchedCandidate = {
       ...candidate,
       benchmark_suite_id: "different-suite",
@@ -325,6 +343,37 @@ describe("manifest schemas", () => {
     };
 
     expect(areManifestsBenchmarkComparable(baseline, mismatchedCandidate)).toBe(false);
+    expect(
+      areManifestsBenchmarkComparable(baseline, {
+        ...candidate,
+        sampling_config: {
+          temperature: 0.4,
+          top_p: 1,
+        },
+      }),
+    ).toBe(false);
+    expect(
+      areManifestsBenchmarkComparable(baseline, {
+        ...candidate,
+        api_revision: "v2",
+      }),
+    ).toBe(false);
+    expect(
+      areManifestsBenchmarkComparable(baseline, {
+        ...candidate,
+        provider_release_label: "gpt-5-2026-03-11",
+      }),
+    ).toBe(false);
+    expect(
+      areManifestsBenchmarkComparable(baseline, {
+        ...candidate,
+        token_budget: {
+          max_input_tokens: 32000,
+          max_output_tokens: 8192,
+          max_total_tokens: 40000,
+        },
+      }),
+    ).toBe(false);
   });
 });
 

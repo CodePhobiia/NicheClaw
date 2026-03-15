@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ArtifactRef, ArtifactRightsState } from "../../../src/niche/schema/index.js";
+import { computeStableContentHash } from "../../../src/niche/benchmark/index.js";
 import {
   buildRefreshTriggerSummary,
   planContinuousOptimizationLoop,
 } from "../../../src/niche/optimizer/index.js";
 import { createPromotedReleaseMonitorDefinition } from "../../../src/niche/release/index.js";
+import type { ArtifactRef, ArtifactRightsState } from "../../../src/niche/schema/index.js";
 import type { VerifierMetricSummary } from "../../../src/niche/verifier/index.js";
-import { computeStableContentHash } from "../../../src/niche/benchmark/index.js";
 
 const FULL_RIGHTS: ArtifactRightsState = {
   rights_to_store: true,

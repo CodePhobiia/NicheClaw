@@ -1,9 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type {
-  BaselineManifest,
-  CandidateManifest,
-  EvalCase,
-} from "../../../src/niche/schema/index.js";
 import {
   bootstrapConfidenceInterval,
   buildPairedDeltaSummary,
@@ -16,6 +11,11 @@ import {
   listBenchmarkArms,
   runAtomicBenchmark,
 } from "../../../src/niche/benchmark/index.js";
+import type {
+  BaselineManifest,
+  CandidateManifest,
+  EvalCase,
+} from "../../../src/niche/schema/index.js";
 import { withTempHome } from "../../../test/helpers/temp-home.js";
 
 function makeSuite() {
@@ -149,8 +149,23 @@ function makeCandidateManifest(): CandidateManifest {
     action_policy_id: "action-policy-v1",
     retrieval_stack_id: "retrieval-stack-v1",
     verifier_pack_id: "verifier-pack-v1",
+    tool_catalog_version: "2026.3.12",
+    tool_allowlist: ["read", "exec", "apply_patch"],
+    tool_contract_version: "2026.3.12",
+    retrieval_config: { retrieval_policy: "baseline" },
+    verifier_config: { verifier_pack: "baseline" },
     optional_student_model_ids: [],
     candidate_recipe: "candidate-recipe-v1",
+  };
+}
+
+function makeBenchmarkArm(params: { armKind: "baseline" | "candidate"; manifestId: string }) {
+  return {
+    benchmark_arm_id: `benchmark-arm-${params.armKind}`,
+    benchmark_suite_id: "repo-ci-atomic-suite",
+    manifest_id: params.manifestId,
+    arm_kind: params.armKind,
+    mode: "offline_gold" as const,
   };
 }
 
@@ -180,9 +195,10 @@ describe("suite registry", () => {
       expect(getAtomicBenchmarkSuite("repo-ci-atomic-suite", process.env)).toEqual(suite);
       expect(listAtomicBenchmarkSuites(process.env)).toEqual([suite]);
       expect(getBenchmarkArm("baseline-arm", process.env)).toEqual(baselineArm);
-      expect(
-        listBenchmarkArms({ benchmarkSuiteId: "repo-ci-atomic-suite" }, process.env),
-      ).toEqual([baselineArm, candidateArm]);
+      expect(listBenchmarkArms({ benchmarkSuiteId: "repo-ci-atomic-suite" }, process.env)).toEqual([
+        baselineArm,
+        candidateArm,
+      ]);
     });
   });
 });
@@ -218,12 +234,26 @@ describe("atomic benchmark runner", () => {
     const suite = makeSuite();
     const baselineManifest = makeBaselineManifest();
     const candidateManifest = makeCandidateManifest();
+    const baselineArm = makeBenchmarkArm({
+      armKind: "baseline",
+      manifestId: baselineManifest.baseline_manifest_id,
+    });
+    const candidateArm = makeBenchmarkArm({
+      armKind: "candidate",
+      manifestId: candidateManifest.candidate_manifest_id,
+    });
 
     const result = await runAtomicBenchmark({
       suite,
       baselineManifest,
       candidateManifest,
+      baselineArm,
+      candidateArm,
       bootstrapSeed: 11,
+      contaminationDetected: false,
+      actualSuiteHash: suite.metadata.suite_hash,
+      actualFixtureVersion: suite.metadata.fixture_version,
+      actualGraderVersion: suite.cases[0].grader_spec.grader_refs[0],
       executeBaselineCase: async ({ evalCase }) => ({
         score: evalCase.eval_case_id === "eval-case-1" ? 0.5 : 0.4,
         hard_fail: false,
@@ -244,9 +274,13 @@ describe("atomic benchmark runner", () => {
 
     expect(result.paired_case_results).toHaveLength(2);
     expect(result.summary.invalidated).toBe(false);
-    expect(result.summary.provider_metadata_quality).toBe("release_label_only");
+    expect(result.summary.baseline_arm_id).toBe("benchmark-arm-baseline");
+    expect(result.summary.candidate_arm_id).toBe("benchmark-arm-candidate");
+    expect(result.summary.baseline_provider_metadata_quality).toBe("exact_snapshot");
+    expect(result.summary.candidate_provider_metadata_quality).toBe("release_label_only");
     expect(result.summary.contamination_audit_summary.contamination_detected).toBe(false);
     expect(result.contamination_audit_metadata.audited_case_count).toBe(2);
+    expect(result.summary.task_family_summaries[0]?.mean_delta).toBeGreaterThan(0);
     expect(result.summary.paired_delta_summary.confidence_interval_low).toBeLessThanOrEqual(
       result.summary.paired_delta_summary.confidence_interval_high,
     );
@@ -261,11 +295,25 @@ describe("atomic benchmark runner", () => {
       provider: "anthropic",
       model_id: "claude-sonnet",
     };
+    const baselineArm = makeBenchmarkArm({
+      armKind: "baseline",
+      manifestId: baselineManifest.baseline_manifest_id,
+    });
+    const candidateArm = makeBenchmarkArm({
+      armKind: "candidate",
+      manifestId: candidateManifest.candidate_manifest_id,
+    });
 
     const result = await runAtomicBenchmark({
       suite,
       baselineManifest,
       candidateManifest,
+      baselineArm,
+      candidateArm,
+      contaminationDetected: false,
+      actualSuiteHash: suite.metadata.suite_hash,
+      actualFixtureVersion: suite.metadata.fixture_version,
+      actualGraderVersion: suite.cases[0].grader_spec.grader_refs[0],
       executeBaselineCase: async () => {
         throw new Error("baseline executor should not run for invalidated comparisons");
       },
@@ -276,11 +324,95 @@ describe("atomic benchmark runner", () => {
 
     expect(result.summary.invalidated).toBe(true);
     expect(result.paired_case_results).toEqual([]);
+    expect(result.summary.task_family_summaries).toHaveLength(2);
     expect(result.summary.invalidation_reasons).toEqual(
       expect.arrayContaining([
         expect.stringContaining("same benchmark_suite_id"),
         expect.stringContaining("same provider"),
       ]),
+    );
+  });
+
+  it("invalidates atomic runs for contamination and drift before executing any cases", async () => {
+    const suite = makeSuite();
+    const baselineManifest = makeBaselineManifest();
+    const candidateManifest = makeCandidateManifest();
+    const baselineArm = makeBenchmarkArm({
+      armKind: "baseline",
+      manifestId: baselineManifest.baseline_manifest_id,
+    });
+    const candidateArm = makeBenchmarkArm({
+      armKind: "candidate",
+      manifestId: candidateManifest.candidate_manifest_id,
+    });
+
+    const result = await runAtomicBenchmark({
+      suite,
+      baselineManifest,
+      candidateManifest,
+      baselineArm,
+      candidateArm,
+      contaminationDetected: true,
+      actualSuiteHash: "different-suite-hash",
+      actualFixtureVersion: "different-fixtures",
+      actualGraderVersion: "different-grader",
+      executeBaselineCase: async () => {
+        throw new Error("baseline executor should not run when atomic benchmark is invalidated");
+      },
+      executeCandidateCase: async () => {
+        throw new Error("candidate executor should not run when atomic benchmark is invalidated");
+      },
+    });
+
+    expect(result.summary.invalidated).toBe(true);
+    expect(result.contamination_audit_metadata.contamination_detected).toBe(true);
+    expect(result.invalidation_reasons.map((reason) => reason.code)).toEqual(
+      expect.arrayContaining([
+        "contamination_detected",
+        "benchmark_suite_hash_drift",
+        "fixture_version_drift",
+        "grader_version_drift",
+      ]),
+    );
+  });
+
+  it("marks contamination when contaminationDetected is true", async () => {
+    const suite = makeSuite();
+    const baselineManifest = makeBaselineManifest();
+    const candidateManifest = makeCandidateManifest();
+    const baselineArm = makeBenchmarkArm({
+      armKind: "baseline",
+      manifestId: baselineManifest.baseline_manifest_id,
+    });
+    const candidateArm = makeBenchmarkArm({
+      armKind: "candidate",
+      manifestId: candidateManifest.candidate_manifest_id,
+    });
+
+    const result = await runAtomicBenchmark({
+      suite,
+      baselineManifest,
+      candidateManifest,
+      baselineArm,
+      candidateArm,
+      contaminationDetected: true,
+      actualSuiteHash: suite.metadata.suite_hash,
+      actualFixtureVersion: suite.metadata.fixture_version,
+      actualGraderVersion: suite.cases[0].grader_spec.grader_refs[0],
+      executeBaselineCase: async () => {
+        throw new Error("should not execute when contamination is detected");
+      },
+      executeCandidateCase: async () => {
+        throw new Error("should not execute when contamination is detected");
+      },
+    });
+
+    expect(result.summary.invalidated).toBe(true);
+    expect(result.summary.invalidation_reasons).toContainEqual(
+      expect.stringContaining("contaminated"),
+    );
+    expect(result.invalidation_reasons).toContainEqual(
+      expect.objectContaining({ code: "contamination_detected" }),
     );
   });
 });

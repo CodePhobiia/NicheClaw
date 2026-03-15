@@ -1,16 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
-import {
-  DomainPackSchema,
-  type NicheProgram,
-} from "../../../src/niche/schema/index.js";
 import {
   compileDomainPack,
+  materializeCompiledDomainPackArtifact,
+  materializeNormalizedSourceArtifacts,
   normalizeSourceDescriptors,
   type SourceDescriptor,
 } from "../../../src/niche/domain/index.js";
+import { DomainPackSchema, type NicheProgram } from "../../../src/niche/schema/index.js";
+import { getParentsForArtifact } from "../../../src/niche/store/index.js";
+import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
 import { withTempHome } from "../../../test/helpers/temp-home.js";
 
 function makeNicheProgram(): NicheProgram {
@@ -84,9 +84,14 @@ describe("domain source ingest and compiler", () => {
             rights_to_store: true,
             rights_to_train: false,
             rights_to_benchmark: true,
+            rights_to_derive: true,
+            rights_to_distill: false,
+            rights_to_generate_synthetic_from: false,
             retention_policy: "retain",
             redaction_status: "clean",
             pii_status: "none",
+            provenance_status: "verified",
+            data_zone: "dev",
           },
         },
         {
@@ -101,9 +106,14 @@ describe("domain source ingest and compiler", () => {
             rights_to_store: true,
             rights_to_train: true,
             rights_to_benchmark: true,
+            rights_to_derive: true,
+            rights_to_distill: true,
+            rights_to_generate_synthetic_from: true,
             retention_policy: "retain",
             redaction_status: "clean",
             pii_status: "none",
+            provenance_status: "verified",
+            data_zone: "dev",
           },
         },
         {
@@ -120,9 +130,14 @@ describe("domain source ingest and compiler", () => {
             rights_to_store: true,
             rights_to_train: true,
             rights_to_benchmark: true,
+            rights_to_derive: true,
+            rights_to_distill: true,
+            rights_to_generate_synthetic_from: true,
             retention_policy: "retain",
             redaction_status: "clean",
             pii_status: "none",
+            provenance_status: "verified",
+            data_zone: "dev",
           },
         },
       ];
@@ -163,11 +178,30 @@ describe("domain source ingest and compiler", () => {
         sources: normalized,
       });
       expect(compiledAgain).toEqual(compiled);
+
+      const sourceArtifacts = materializeNormalizedSourceArtifacts(normalized, process.env);
+      const domainPackArtifact = materializeCompiledDomainPackArtifact({
+        domainPack: compiled.domainPack,
+        sourceArtifactRefs: sourceArtifacts.map((artifact) => artifact.ref),
+        createdAt: "2026-03-12T12:00:00.000Z",
+        env: process.env,
+      });
+      expect(getParentsForArtifact(domainPackArtifact.ref.artifact_id, process.env)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ parent_artifact_id: "local-source-dataset" }),
+          expect.objectContaining({ parent_artifact_id: "repo-source-dataset" }),
+          expect.objectContaining({ parent_artifact_id: "seed-source-dataset" }),
+        ]),
+      );
     });
   });
 
   it("rejects repo asset paths that escape the repo root", async () => {
     await withTempHome(async (home) => {
+      const escapedRoot = path.join(home, "repo-escape");
+      await fs.mkdir(escapedRoot, { recursive: true });
+      await fs.writeFile(path.join(escapedRoot, "secret.txt"), "secret\n");
+
       const sources: SourceDescriptor[] = [
         {
           sourceId: "repo-source",
@@ -181,16 +215,56 @@ describe("domain source ingest and compiler", () => {
             rights_to_store: true,
             rights_to_train: true,
             rights_to_benchmark: true,
+            rights_to_derive: true,
+            rights_to_distill: true,
+            rights_to_generate_synthetic_from: true,
             retention_policy: "retain",
             redaction_status: "clean",
             pii_status: "none",
+            provenance_status: "verified",
+            data_zone: "dev",
           },
         },
       ];
 
-      await expect(normalizeSourceDescriptors(sources)).rejects.toThrow(
-        /escapes repo root/u,
-      );
+      await expect(normalizeSourceDescriptors(sources)).rejects.toThrow(/escapes repo root/u);
+    });
+  });
+
+  it("rejects sibling-prefix repo asset escapes that share the same path prefix", async () => {
+    await withTempHome(async (home) => {
+      const repoRoot = path.join(home, "repo");
+      const escapedRoot = path.join(home, "repo-escape");
+      await fs.mkdir(repoRoot, { recursive: true });
+      await fs.mkdir(escapedRoot, { recursive: true });
+      await fs.writeFile(path.join(escapedRoot, "secret.txt"), "secret\n");
+
+      await expect(
+        normalizeSourceDescriptors([
+          {
+            sourceId: "repo-source",
+            sourceKind: "repos",
+            inputKind: "repo_asset",
+            title: "Repo Source",
+            repoRoot,
+            repoRelativePath: "../repo-escape/secret.txt",
+            accessPattern: "workspace",
+            rights: {
+              rights_to_store: true,
+              rights_to_train: true,
+              rights_to_benchmark: true,
+              rights_to_derive: true,
+              rights_to_distill: true,
+              rights_to_generate_synthetic_from: true,
+              retention_policy: "retain",
+              redaction_status: "clean",
+              pii_status: "none",
+              provenance_status: "verified",
+              data_zone: "dev",
+            },
+          },
+        ]),
+      ).rejects.toThrow(/escapes repo root/u);
     });
   });
 });

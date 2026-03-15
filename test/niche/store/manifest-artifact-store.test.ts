@@ -137,6 +137,15 @@ function makeCandidateManifest(): CandidateManifest {
     action_policy_id: "repo-ci-action-policy-v1",
     retrieval_stack_id: "repo-ci-retrieval-stack-v1",
     verifier_pack_id: "repo-ci-verifier-pack-v1",
+    tool_catalog_version: "2026.3.12",
+    tool_allowlist: ["read", "exec", "apply_patch"],
+    tool_contract_version: "2026.3.12",
+    retrieval_config: {
+      retrieval_policy: "baseline",
+    },
+    verifier_config: {
+      verifier_pack: "baseline",
+    },
     optional_student_model_ids: [],
     candidate_recipe: "repo-ci-candidate-recipe-v1",
   };
@@ -167,6 +176,14 @@ function makeArtifact(): Artifact {
       example_count: 42,
       quality_score: 0.97,
     },
+    governed_data_status: {
+      data_zone: "dev",
+      retention_policy: "retain_for_90_days",
+      redaction_status: "clean",
+      pii_status: "none",
+      provenance_status: "verified",
+      quarantined: false,
+    },
     created_at: "2026-03-12T10:05:00.000Z",
     lineage: [
       {
@@ -195,7 +212,9 @@ describe("niche store paths", () => {
     await withTempHome(async (home) => {
       const expectedRoot = path.join(home, ".openclaw", "niche");
       expect(resolveNicheStateRoot(process.env)).toBe(expectedRoot);
-      expect(resolveNicheStoreRoots(process.env).artifacts).toBe(path.join(expectedRoot, "artifacts"));
+      expect(resolveNicheStoreRoots(process.env).artifacts).toBe(
+        path.join(expectedRoot, "artifacts"),
+      );
       expect(resolveManifestStorePath("baseline", "baseline-manifest-repo-ci", process.env)).toBe(
         path.join(expectedRoot, "manifests", "baseline", "baseline-manifest-repo-ci.json"),
       );
@@ -271,9 +290,9 @@ describe("manifest store", () => {
       const pathname = writeBaselineManifest(makeBaselineManifest(), process.env);
       fs.writeFileSync(pathname, "{ invalid-json", "utf8");
 
-      expect(() =>
-        getBaselineManifest("baseline-manifest-repo-ci", process.env),
-      ).toThrow(/Invalid JSON in baseline manifest baseline-manifest-repo-ci/u);
+      expect(() => getBaselineManifest("baseline-manifest-repo-ci", process.env)).toThrow(
+        /Invalid JSON in baseline manifest baseline-manifest-repo-ci/u,
+      );
     });
   });
 });
@@ -282,6 +301,12 @@ describe("artifact registry", () => {
   it("creates, loads, lists, and verifies content-hash-backed artifact records", async () => {
     await withTempHome(async () => {
       const artifact = makeArtifact();
+      const storedArtifact: Artifact = {
+        ...artifact,
+        teacher_rollout_authority: {
+          embargo_status: "cleared",
+        },
+      };
       const rightsState = makeRightsState();
       const { path: artifactPath, ref } = createArtifactRecord({
         artifact,
@@ -293,13 +318,13 @@ describe("artifact registry", () => {
 
       const stored = getArtifactRecord(ref, process.env);
       expect(stored).toEqual({
-        artifact,
+        artifact: storedArtifact,
         ref,
       });
 
       expect(listArtifactRecords({ env: process.env })).toEqual([
         {
-          artifact,
+          artifact: storedArtifact,
           ref,
         },
       ]);
@@ -309,9 +334,9 @@ describe("artifact registry", () => {
         `${JSON.stringify(
           {
             artifact: {
-              ...artifact,
+              ...storedArtifact,
               metrics: {
-                ...artifact.metrics,
+                ...storedArtifact.metrics,
                 quality_score: 0.12,
               },
             },

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { BaselineManifest, CandidateManifest, EpisodeCase } from "../../../src/niche/schema/index.js";
 import {
   arbitrateGraderSignals,
   collectBenchmarkInvalidationReasons,
   isBenchmarkInvalidated,
   runEpisodeBenchmark,
 } from "../../../src/niche/benchmark/index.js";
+import type {
+  BaselineManifest,
+  CandidateManifest,
+  EpisodeCase,
+} from "../../../src/niche/schema/index.js";
 
 function makeBaselineManifest(): BaselineManifest {
   return {
@@ -84,6 +88,11 @@ function makeCandidateManifest(): CandidateManifest {
     action_policy_id: "action-policy-v1",
     retrieval_stack_id: "retrieval-stack-v1",
     verifier_pack_id: "verifier-pack-v1",
+    tool_catalog_version: "2026.3.12",
+    tool_allowlist: ["read", "exec", "apply_patch"],
+    tool_contract_version: "2026.3.12",
+    retrieval_config: { retrieval_policy: "baseline" },
+    verifier_config: { verifier_pack: "baseline" },
     optional_student_model_ids: [],
     candidate_recipe: "candidate-recipe-v1",
   };
@@ -127,13 +136,38 @@ function makeEpisodeSuite() {
   };
 }
 
+function makeBenchmarkArm(params: { armKind: "baseline" | "candidate"; manifestId: string }) {
+  return {
+    benchmark_arm_id: `benchmark-arm-${params.armKind}`,
+    benchmark_suite_id: "repo-ci-episode-suite",
+    manifest_id: params.manifestId,
+    arm_kind: params.armKind,
+    mode: "offline_gold" as const,
+  };
+}
+
 describe("episode benchmark runner", () => {
   it("records per-step metrics and emits an episode summary compatible with benchmark results", async () => {
+    const baselineManifest = makeBaselineManifest();
+    const candidateManifest = makeCandidateManifest();
+    const suite = makeEpisodeSuite();
     const result = await runEpisodeBenchmark({
-      suite: makeEpisodeSuite(),
-      baselineManifest: makeBaselineManifest(),
-      candidateManifest: makeCandidateManifest(),
+      suite,
+      baselineManifest,
+      candidateManifest,
+      baselineArm: makeBenchmarkArm({
+        armKind: "baseline",
+        manifestId: baselineManifest.baseline_manifest_id,
+      }),
+      candidateArm: makeBenchmarkArm({
+        armKind: "candidate",
+        manifestId: candidateManifest.candidate_manifest_id,
+      }),
       bootstrapSeed: 13,
+      contaminationDetected: false,
+      actualSuiteHash: suite.metadata.suite_hash,
+      actualFixtureVersion: suite.metadata.fixture_version,
+      actualGraderVersion: suite.cases[0].grader_spec.grader_refs[0],
       executeBaselineCase: async () => ({
         total_score: 0.4,
         success: false,
@@ -195,6 +229,7 @@ describe("episode benchmark runner", () => {
     expect(result.paired_case_results).toHaveLength(1);
     expect(result.paired_case_results[0]?.candidate.step_results).toHaveLength(2);
     expect(result.summary.task_family_summaries[0]?.task_family).toBe("ci_repair");
+    expect(result.summary.task_family_summaries[0]?.mean_delta).toBeCloseTo(0.5);
   });
 });
 

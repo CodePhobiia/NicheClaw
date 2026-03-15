@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ReplyPayload } from "../../../src/auto-reply/types.js";
-import type { DomainPack, SourceAccessManifest } from "../../../src/niche/schema/index.js";
-import { createVerifierPackConfig } from "../../../src/niche/verifier/index.js";
-import {
-  applyVerifierGate,
-  maybeRunNicheVerifierGate,
-} from "../../../src/niche/runtime/verifier-gate.js";
 import {
   clearAllNicheRunTraceContextsForTest,
   registerNicheRunTraceContext,
   snapshotNicheRunTraceContext,
 } from "../../../src/niche/runtime/run-trace-capture.js";
+import {
+  applyVerifierGate,
+  maybeRunNicheVerifierGate,
+} from "../../../src/niche/runtime/verifier-gate.js";
+import type { DomainPack, SourceAccessManifest } from "../../../src/niche/schema/index.js";
+import { createVerifierPackConfig } from "../../../src/niche/verifier/index.js";
 
 function makeDomainPack(): DomainPack {
   return {

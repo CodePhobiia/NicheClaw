@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ArtifactRightsState } from "../../../src/niche/schema/index.js";
-import {
-  DEFAULT_READINESS_THRESHOLDS,
-} from "../../../src/niche/domain/readiness-thresholds.js";
-import {
-  propagateDerivedRights,
-} from "../../../src/niche/domain/rights-propagation.js";
 import {
   buildReadinessRefusal,
   evaluateReadinessGate,
 } from "../../../src/niche/domain/readiness-gate.js";
+import { DEFAULT_READINESS_THRESHOLDS } from "../../../src/niche/domain/readiness-thresholds.js";
+import { propagateDerivedRights } from "../../../src/niche/domain/rights-propagation.js";
+import type { ArtifactRightsState } from "../../../src/niche/schema/index.js";
 
 function makeRightsState(overrides: Partial<ArtifactRightsState> = {}): ArtifactRightsState {
   return {
@@ -107,7 +103,7 @@ describe("readiness gate", () => {
       }),
       dimensionValues: {
         source_quality: 85,
-        source_coverage: 40,
+        source_coverage: 15,
         contradiction_rate: 50,
         freshness: 85,
         rights_sufficiency: 40,

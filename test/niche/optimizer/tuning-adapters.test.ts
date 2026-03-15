@@ -16,10 +16,7 @@ const FULL_RIGHTS: ArtifactRightsState = {
   rights_to_generate_synthetic_from: true,
 };
 
-function makeRef(
-  artifactId: string,
-  artifactType: ArtifactRef["artifact_type"],
-): ArtifactRef {
+function makeRef(artifactId: string, artifactType: ArtifactRef["artifact_type"]): ArtifactRef {
   return {
     artifact_id: artifactId,
     artifact_type: artifactType,

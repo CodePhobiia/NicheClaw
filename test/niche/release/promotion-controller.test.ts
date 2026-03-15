@@ -1,20 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
-  CandidateReleaseSchema,
-  PromotedReleaseMonitorSchema,
-  type ArtifactRef,
-  type BaselineManifest,
-  type BenchmarkResultSummary,
-  type CandidateManifest,
-} from "../../../src/niche/schema/index.js";
-import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
-import {
   assessPromotedReleaseMonitor,
   createPromotedReleaseMonitorDefinition,
   createPromotionControllerResult,
   evaluateReleasePolicy,
 } from "../../../src/niche/release/index.js";
+import {
+  CandidateReleaseSchema,
+  PromotedReleaseMonitorSchema,
+  type ArtifactRef,
+  type BaselineManifest,
+  type BenchmarkResultRecord,
+  type BenchmarkResultSummary,
+  type CandidateManifest,
+} from "../../../src/niche/schema/index.js";
 import type { VerifierMetricSummary } from "../../../src/niche/verifier/index.js";
+import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
 
 function makeBaselineManifest(): BaselineManifest {
   return {
@@ -82,7 +83,7 @@ function makeCandidateManifest(): CandidateManifest {
     provider_metadata_quality: "release_label_only",
     sampling_config: { temperature: 0.2 },
     prompt_asset_version: "prompt-v2",
-    grader_set_version: "grader-set-v2",
+    grader_set_version: "grader-set-v1",
     benchmark_suite_id: "repo-ci-suite",
     source_access_manifest_id: "source-access-v1",
     retry_policy: {
@@ -99,6 +100,15 @@ function makeCandidateManifest(): CandidateManifest {
     action_policy_id: "action-policy-v1",
     retrieval_stack_id: "retrieval-stack-v1",
     verifier_pack_id: "verifier-pack-v1",
+    tool_catalog_version: "tool-catalog-v1",
+    tool_allowlist: ["exec", "read"],
+    tool_contract_version: "tool-contract-v1",
+    retrieval_config: {
+      stack: "retrieval-v1",
+    },
+    verifier_config: {
+      pack: "verifier-v1",
+    },
     optional_student_model_ids: [],
     candidate_recipe: "candidate-recipe-v1",
   };
@@ -120,7 +130,8 @@ function makeBenchmarkResult(params: {
     mode: "offline_gold",
     baseline_arm_id: "baseline-manifest-v1",
     candidate_arm_id: "candidate-manifest-v1",
-    provider_metadata_quality: "release_label_only",
+    baseline_provider_metadata_quality: "release_label_only",
+    candidate_provider_metadata_quality: "release_label_only",
     primary_metric: "task_success",
     case_count: 120,
     paired_delta_summary: {
@@ -134,9 +145,24 @@ function makeBenchmarkResult(params: {
     task_family_summaries: [
       {
         task_family: "repo-ci-verification",
-        case_count: 120,
+        case_count: 40,
         score_mean: 0.82,
         hard_fail_rate: params.hardFailRate ?? 0.02,
+        mean_delta: params.meanDelta,
+      },
+      {
+        task_family: "repo-navigation",
+        case_count: 40,
+        score_mean: 0.8,
+        hard_fail_rate: params.hardFailRate ?? 0.02,
+        mean_delta: params.meanDelta,
+      },
+      {
+        task_family: "repair-loop",
+        case_count: 40,
+        score_mean: 0.84,
+        hard_fail_rate: params.hardFailRate ?? 0.02,
+        mean_delta: params.meanDelta,
       },
     ],
     contamination_audit_summary: {
@@ -149,7 +175,38 @@ function makeBenchmarkResult(params: {
   };
 }
 
-function makeVerifierMetrics(overrides: Partial<VerifierMetricSummary> = {}): VerifierMetricSummary {
+function makeBenchmarkRecord(
+  summary: BenchmarkResultSummary,
+  overrides: Partial<BenchmarkResultRecord> = {},
+): BenchmarkResultRecord {
+  return {
+    benchmark_result_record_id: `record-${summary.benchmark_result_id}`,
+    summary,
+    baseline_manifest_id: "baseline-manifest-v1",
+    candidate_manifest_id: "candidate-manifest-v1",
+    suite_hash: "0123456789abcdef0123456789abcdef",
+    fixture_version: "2026.3.12-fixtures",
+    actual_suite_hash: "0123456789abcdef0123456789abcdef",
+    actual_fixture_version: "2026.3.12-fixtures",
+    actual_grader_version: "grader-v1",
+    case_membership_hash: "fedcba9876543210fedcba9876543210",
+    run_trace_refs: ["run-trace-1"],
+    replay_bundle_refs: ["replay-bundle-1"],
+    evidence_bundle_ids: ["evidence-bundle-1"],
+    arbitration_outcome_summary: {
+      arbitration_policy_id: "arbitration-v1",
+      unresolved_blocking_conflicts: false,
+      unresolved_conflict_count: 0,
+      blocking_conflict_types: [],
+    },
+    created_at: "2026-03-12T12:22:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeVerifierMetrics(
+  overrides: Partial<VerifierMetricSummary> = {},
+): VerifierMetricSummary {
   return {
     sample_count: 50,
     true_positive_rate: 0.2,
@@ -194,8 +251,20 @@ describe("release engine and promoted monitor", () => {
     const policy = evaluateReleasePolicy({
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
-      benchmarkResults: [makeBenchmarkResult({ resultId: "benchmark-1", meanDelta: 0.08, lowBound: 0.03 })],
-      shadowResults: [makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 })],
+      benchmarkResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "benchmark-1", meanDelta: 0.08, lowBound: 0.03 }),
+        ),
+      ],
+      shadowResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 }),
+          {
+            benchmark_result_record_id: "record-shadow-1",
+            summary: makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 }),
+          },
+        ),
+      ],
       verifierMetrics: makeVerifierMetrics(),
       latencyRegression: 0.05,
       costRegression: 0.04,
@@ -209,8 +278,12 @@ describe("release engine and promoted monitor", () => {
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
       componentArtifactRefs: [makeArtifactRef("release-bundle-v1")],
-      benchmarkResults: [makeBenchmarkResult({ resultId: "benchmark-1", meanDelta: 0.08, lowBound: 0.03 })],
-      shadowResults: [makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 })],
+      benchmarkResults: [
+        makeBenchmarkResult({ resultId: "benchmark-1", meanDelta: 0.08, lowBound: 0.03 }),
+      ],
+      shadowResults: [
+        makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 }),
+      ],
       approvedBy: ["release-operator"],
       rollbackTarget: "baseline-release-v1",
       policyEvaluation: policy,
@@ -232,12 +305,14 @@ describe("release engine and promoted monitor", () => {
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
       benchmarkResults: [
-        makeBenchmarkResult({
-          resultId: "benchmark-invalid",
-          meanDelta: 0.08,
-          lowBound: 0.03,
-          invalidated: true,
-        }),
+        makeBenchmarkRecord(
+          makeBenchmarkResult({
+            resultId: "benchmark-invalid",
+            meanDelta: 0.08,
+            lowBound: 0.03,
+            invalidated: true,
+          }),
+        ),
       ],
       verifierMetrics: makeVerifierMetrics(),
       latencyRegression: 0.05,
@@ -254,11 +329,107 @@ describe("release engine and promoted monitor", () => {
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
       benchmarkResults: [
-        makeBenchmarkResult({
-          resultId: "benchmark-wrong-suite",
-          meanDelta: 0.08,
-          lowBound: 0.03,
-          suiteId: "other-suite",
+        makeBenchmarkRecord(
+          makeBenchmarkResult({
+            resultId: "benchmark-wrong-suite",
+            meanDelta: 0.08,
+            lowBound: 0.03,
+            suiteId: "other-suite",
+          }),
+        ),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+
+    expect(policy.recommended_decision).toBe("rejected");
+    expect(policy.blocking_reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("targets suite other-suite")]),
+    );
+  });
+
+  it("keeps a winning candidate in shadow when shadow evidence is still missing", () => {
+    const policy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: makeCandidateManifest(),
+      benchmarkResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "benchmark-2", meanDelta: 0.05, lowBound: 0.01 }),
+        ),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+
+    expect(policy.recommended_decision).toBe("shadow");
+    expect(policy.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("Shadow results")]),
+    );
+  });
+
+  it("routes a marginal shadow win into canary instead of full promotion", () => {
+    const policy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: makeCandidateManifest(),
+      benchmarkResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "benchmark-3", meanDelta: 0.06, lowBound: 0.02 }),
+        ),
+      ],
+      shadowResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "shadow-2", meanDelta: 0.01, lowBound: -0.01 }),
+          {
+            benchmark_result_record_id: "record-shadow-2",
+            summary: makeBenchmarkResult({
+              resultId: "shadow-2",
+              meanDelta: 0.01,
+              lowBound: -0.01,
+            }),
+          },
+        ),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+
+    expect(policy.recommended_decision).toBe("canary");
+  });
+
+  it("rejects undersized benchmark evidence even when deltas look strong", () => {
+    const policy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: makeCandidateManifest(),
+      benchmarkResults: [
+        makeBenchmarkRecord({
+          ...makeBenchmarkResult({
+            resultId: "benchmark-small",
+            meanDelta: 0.08,
+            lowBound: 0.03,
+          }),
+          case_count: 4,
+          task_family_summaries: [
+            {
+              task_family: "repo-ci-verification",
+              case_count: 2,
+              score_mean: 0.82,
+              hard_fail_rate: 0.02,
+              mean_delta: 0.08,
+            },
+            {
+              task_family: "repo-navigation",
+              case_count: 1,
+              score_mean: 0.8,
+              hard_fail_rate: 0.02,
+              mean_delta: 0.08,
+            },
+          ],
         }),
       ],
       verifierMetrics: makeVerifierMetrics(),
@@ -270,39 +441,223 @@ describe("release engine and promoted monitor", () => {
     expect(policy.recommended_decision).toBe("rejected");
     expect(policy.blocking_reasons).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("targets suite other-suite"),
+        expect.stringContaining("held-out cases"),
+        expect.stringContaining("task families"),
       ]),
     );
   });
 
-  it("keeps a winning candidate in shadow when shadow evidence is still missing", () => {
+  it("does not let duplicated summaries inflate the held-out case minimum", () => {
+    const undersizedSummary = {
+      ...makeBenchmarkResult({
+        resultId: "benchmark-small",
+        meanDelta: 0.08,
+        lowBound: 0.03,
+      }),
+      case_count: 4,
+      task_family_summaries: [
+        {
+          task_family: "repo-ci-verification",
+          case_count: 2,
+          score_mean: 0.82,
+          hard_fail_rate: 0.02,
+          mean_delta: 0.08,
+        },
+        {
+          task_family: "repo-navigation",
+          case_count: 1,
+          score_mean: 0.8,
+          hard_fail_rate: 0.02,
+          mean_delta: 0.08,
+        },
+        {
+          task_family: "repair-loop",
+          case_count: 1,
+          score_mean: 0.84,
+          hard_fail_rate: 0.02,
+          mean_delta: 0.08,
+        },
+      ],
+    };
     const policy = evaluateReleasePolicy({
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
-      benchmarkResults: [makeBenchmarkResult({ resultId: "benchmark-2", meanDelta: 0.05, lowBound: 0.01 })],
+      benchmarkResults: Array.from({ length: 25 }, (_, index) =>
+        makeBenchmarkRecord(
+          {
+            ...undersizedSummary,
+            benchmark_result_id: `benchmark-small-${index + 1}`,
+          },
+          {
+            benchmark_result_record_id: `record-benchmark-small-${index + 1}`,
+          },
+        ),
+      ),
       verifierMetrics: makeVerifierMetrics(),
       latencyRegression: 0.05,
       costRegression: 0.04,
       postPromotionMonitorConfigured: true,
     });
 
-    expect(policy.recommended_decision).toBe("shadow");
-    expect(policy.warnings[0]).toContain("Shadow results");
+    expect(policy.recommended_decision).toBe("rejected");
+    expect(policy.aggregated_metrics.benchmark_case_count).toBe(4);
+    expect(policy.blocking_reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("held-out cases")]),
+    );
   });
 
-  it("routes a marginal shadow win into canary instead of full promotion", () => {
-    const policy = evaluateReleasePolicy({
+  it("only warns on provider metadata quality below release_label_only", () => {
+    const releaseLabelOnlyPolicy = evaluateReleasePolicy({
       baselineManifest: makeBaselineManifest(),
       candidateManifest: makeCandidateManifest(),
-      benchmarkResults: [makeBenchmarkResult({ resultId: "benchmark-3", meanDelta: 0.06, lowBound: 0.02 })],
-      shadowResults: [makeBenchmarkResult({ resultId: "shadow-2", meanDelta: 0.01, lowBound: -0.01 })],
+      benchmarkResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({
+            resultId: "benchmark-release-label-only",
+            meanDelta: 0.08,
+            lowBound: 0.03,
+          }),
+        ),
+      ],
+      shadowResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({
+            resultId: "shadow-release-label-only",
+            meanDelta: 0.04,
+            lowBound: 0.01,
+          }),
+          {
+            benchmark_result_record_id: "record-shadow-release-label-only",
+            summary: makeBenchmarkResult({
+              resultId: "shadow-release-label-only",
+              meanDelta: 0.04,
+              lowBound: 0.01,
+            }),
+          },
+        ),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+    const reducedReproducibilityPolicy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: {
+        ...makeCandidateManifest(),
+        provider_metadata_quality: "proxy_resolved",
+      },
+      benchmarkResults: [
+        {
+          ...makeBenchmarkRecord({
+            ...makeBenchmarkResult({
+              resultId: "benchmark-proxy-resolved",
+              meanDelta: 0.08,
+              lowBound: 0.03,
+            }),
+            candidate_provider_metadata_quality: "proxy_resolved",
+          }),
+        },
+      ],
+      shadowResults: [
+        {
+          ...makeBenchmarkRecord(
+            {
+              ...makeBenchmarkResult({
+                resultId: "shadow-proxy-resolved",
+                meanDelta: 0.04,
+                lowBound: 0.01,
+              }),
+              candidate_provider_metadata_quality: "proxy_resolved",
+            },
+            {
+              benchmark_result_record_id: "record-shadow-proxy-resolved",
+              summary: {
+                ...makeBenchmarkResult({
+                  resultId: "shadow-proxy-resolved",
+                  meanDelta: 0.04,
+                  lowBound: 0.01,
+                }),
+                candidate_provider_metadata_quality: "proxy_resolved",
+              },
+            },
+          ),
+        },
+      ],
       verifierMetrics: makeVerifierMetrics(),
       latencyRegression: 0.05,
       costRegression: 0.04,
       postPromotionMonitorConfigured: true,
     });
 
-    expect(policy.recommended_decision).toBe("canary");
+    expect(releaseLabelOnlyPolicy.warnings).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Reduced reproducibility provider metadata"),
+      ]),
+    );
+    expect(reducedReproducibilityPolicy.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Reduced reproducibility provider metadata"),
+      ]),
+    );
+  });
+
+  it("rejects task-family regressions even when the aggregate mean delta is positive", () => {
+    const policy = evaluateReleasePolicy({
+      baselineManifest: makeBaselineManifest(),
+      candidateManifest: makeCandidateManifest(),
+      benchmarkResults: [
+        makeBenchmarkRecord({
+          ...makeBenchmarkResult({
+            resultId: "benchmark-family-regression",
+            meanDelta: 0.08,
+            lowBound: 0.03,
+          }),
+          task_family_summaries: [
+            {
+              task_family: "repo-ci-verification",
+              case_count: 40,
+              score_mean: 0.82,
+              hard_fail_rate: 0.02,
+              mean_delta: 0.12,
+            },
+            {
+              task_family: "repo-navigation",
+              case_count: 40,
+              score_mean: 0.8,
+              hard_fail_rate: 0.02,
+              mean_delta: -0.02,
+            },
+            {
+              task_family: "repair-loop",
+              case_count: 40,
+              score_mean: 0.84,
+              hard_fail_rate: 0.02,
+              mean_delta: 0.14,
+            },
+          ],
+        }),
+      ],
+      shadowResults: [
+        makeBenchmarkRecord(
+          makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 }),
+          {
+            benchmark_result_record_id: "record-shadow-family-regression",
+            summary: makeBenchmarkResult({ resultId: "shadow-1", meanDelta: 0.04, lowBound: 0.01 }),
+          },
+        ),
+      ],
+      verifierMetrics: makeVerifierMetrics(),
+      latencyRegression: 0.05,
+      costRegression: 0.04,
+      postPromotionMonitorConfigured: true,
+    });
+
+    expect(policy.recommended_decision).toBe("rejected");
+    expect(policy.blocking_reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining("Task-family regressions detected")]),
+    );
+    expect(policy.aggregated_metrics.regressed_task_families).toContain("repo-navigation");
   });
 
   it("models promoted-monitor defaults and triggers rollback on sustained drift", () => {
@@ -368,5 +723,21 @@ describe("release engine and promoted monitor", () => {
     expect(assessment.should_rollback).toBe(true);
     expect(assessment.breached_dimensions).toContain("task_success_drift");
     expect(assessment.breached_dimensions).toContain("verifier_false_veto_drift");
+  });
+
+  it("rejects summary-shaped runtime inputs at the policy-engine boundary", () => {
+    expect(() =>
+      evaluateReleasePolicy({
+        baselineManifest: makeBaselineManifest(),
+        candidateManifest: makeCandidateManifest(),
+        benchmarkResults: [
+          makeBenchmarkResult({ resultId: "summary-only", meanDelta: 0.08, lowBound: 0.03 }),
+        ] as unknown as BenchmarkResultRecord[],
+        verifierMetrics: makeVerifierMetrics(),
+        latencyRegression: 0.05,
+        costRegression: 0.04,
+        postPromotionMonitorConfigured: true,
+      }),
+    ).toThrow(/benchmark result record/u);
   });
 });

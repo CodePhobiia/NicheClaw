@@ -65,6 +65,7 @@ function makeRunTrace(): RunTrace {
         selected_tool: "exec",
         selected_reason: "Need to reproduce the failure first.",
         guard_decision: "allowed",
+        candidate_rankings: [],
         attempt_index: 0,
       },
     ],
@@ -89,8 +90,10 @@ function makeRunTrace(): RunTrace {
         decision_id: "verifier-1",
         outcome: "approved",
         rationale: "Output is grounded in build evidence.",
+        findings: [],
       },
     ],
+    terminal_status: "delivered",
     final_output: {
       output_id: "final-output-1",
       output_type: "text",
@@ -115,6 +118,7 @@ function makeRunTrace(): RunTrace {
     failure_labels: ["nonzero_exit"],
     artifact_refs: [makeArtifactRef()],
     baseline_or_candidate_manifest_id: "candidate-manifest-repo-ci",
+    readiness_report_id: "repo-ci-specialist-readiness",
     planner_version_id: "planner-primary-v1",
     action_policy_version_id: "repo-ci-action-policy-v1",
     verifier_pack_version_id: "repo-ci-verifier-pack-v1",
@@ -220,6 +224,8 @@ describe("release schemas", () => {
             mode: "offline_gold",
             baseline_arm_id: "baseline-arm",
             candidate_arm_id: "candidate-arm",
+            baseline_provider_metadata_quality: "exact_snapshot",
+            candidate_provider_metadata_quality: "exact_snapshot",
             primary_metric: "task_success",
             case_count: 100,
             paired_delta_summary: {
@@ -236,6 +242,7 @@ describe("release schemas", () => {
                 case_count: 50,
                 score_mean: 0.9,
                 hard_fail_rate: 0.02,
+                mean_delta: 0.12,
               },
             ],
             contamination_audit_summary: {
@@ -259,6 +266,7 @@ describe("release schemas", () => {
         promoted_release_id: "candidate-release-v1",
         baseline_manifest_id: "baseline-manifest-repo-ci",
         candidate_manifest_id: "candidate-manifest-repo-ci",
+        required_case_kinds: ["atomic_case"],
         shadow_recheck_policy: {
           policy_id: "shadow-recheck-v1",
           summary: "Re-run shadow checks every 24 hours.",

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { EpisodeCase } from "../../../src/niche/schema/index.js";
 import {
   createRepoCiEnvironment,
   runRepoCiEpisodeHarness,
   type RepoCiFixture,
 } from "../../../src/niche/gym/index.js";
+import type { EpisodeCase } from "../../../src/niche/schema/index.js";
 
 function makeFixture(): RepoCiFixture {
   return {
@@ -125,13 +125,9 @@ describe("repo ci niche gym harness", () => {
     expect(firstRun.gym_trace.final_state.environment_snapshot_hash).toBe(
       replayedState.environment_snapshot_hash,
     );
-    expect(
-      firstRun.gym_trace.steps.map((step) => step.state_hash).at(-1),
-    ).toBe(
-      environment.step(
-        environment.step(environment.reset("seed-1"), actions[0]).state,
-        actions[1],
-      ).result.state_hash,
+    expect(firstRun.gym_trace.steps.map((step) => step.state_hash).at(-1)).toBe(
+      environment.step(environment.step(environment.reset("seed-1"), actions[0]).state, actions[1])
+        .result.state_hash,
     );
     expect(firstRun.episode_result.success).toBe(true);
     expect(firstRun.episode_result.step_results).toHaveLength(2);

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ArbitrationArtifact, ArtifactRef, GraderArtifact } from "../../../src/niche/schema/index.js";
 import {
   computeBenchmarkFixturePackHash,
   computeBenchmarkSuiteHash,
@@ -19,6 +18,11 @@ import {
   listGraderSets,
   requiredSmeSampleCount,
 } from "../../../src/niche/benchmark/index.js";
+import type {
+  ArbitrationArtifact,
+  ArtifactRef,
+  GraderArtifact,
+} from "../../../src/niche/schema/index.js";
 import { withTempHome } from "../../../test/helpers/temp-home.js";
 
 function makeArtifactRef(): ArtifactRef {

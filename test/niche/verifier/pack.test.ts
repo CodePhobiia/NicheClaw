@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
 import {
   RunTraceSchema,
   SourceAccessManifestSchema,
@@ -16,6 +15,7 @@ import {
   toRunTraceVerifierDecisionRecord,
   type VerifierMetricInput,
 } from "../../../src/niche/verifier/index.js";
+import { validateJsonSchemaValue } from "../../../src/plugins/schema-validator.js";
 
 function makeDomainPack(): DomainPack {
   return {
@@ -170,6 +170,7 @@ function makeMinimalRunTrace(): RunTrace {
         selected_tool: "exec",
         selected_reason: "Run tests",
         guard_decision: "allowed",
+        candidate_rankings: [],
         attempt_index: 0,
       },
     ],
@@ -190,6 +191,7 @@ function makeMinimalRunTrace(): RunTrace {
       },
     ],
     verifier_decisions: [],
+    terminal_status: "delivered",
     final_output: {
       output_id: "output-1",
       output_type: "text",
@@ -214,6 +216,7 @@ function makeMinimalRunTrace(): RunTrace {
     failure_labels: [],
     artifact_refs: [],
     baseline_or_candidate_manifest_id: "candidate-manifest-1",
+    readiness_report_id: "repo-ci-specialist-readiness",
     planner_version_id: "planner-v1",
     action_policy_version_id: "action-policy-v1",
     verifier_pack_version_id: "verifier-v1",
@@ -263,7 +266,8 @@ describe("verifier pack core", () => {
       input: {
         run_id: "run-1",
         niche_program_id: "repo-ci-specialist",
-        candidate_output: "Tests passed based on the repo policy document and tests passed evidence.",
+        candidate_output:
+          "Tests passed based on the repo policy document and tests passed evidence.",
         output_format: "text",
         domain_pack: domainPack,
         source_access_manifest: makeSourceAccessManifest(),
@@ -365,7 +369,8 @@ describe("verifier pack core", () => {
       input: {
         run_id: "run-4",
         niche_program_id: "repo-ci-specialist",
-        candidate_output: "Tests passed based on the repo policy document and tests passed evidence.",
+        candidate_output:
+          "Tests passed based on the repo policy document and tests passed evidence.",
         output_format: "text",
         domain_pack: makeDomainPack(),
         source_access_manifest: makeSourceAccessManifest(),
@@ -397,7 +402,8 @@ describe("verifier metrics", () => {
       input: {
         run_id: "run-5",
         niche_program_id: "repo-ci-specialist",
-        candidate_output: "Tests passed based on the repo policy document and tests passed evidence.",
+        candidate_output:
+          "Tests passed based on the repo policy document and tests passed evidence.",
         output_format: "text",
         domain_pack: makeDomainPack(),
         source_access_manifest: makeSourceAccessManifest(),

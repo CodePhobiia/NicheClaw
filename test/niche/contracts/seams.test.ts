@@ -148,6 +148,7 @@ describe("trace seam contract", () => {
             proposal_id: "proposal-1",
             selected_tool: "exec",
             selected_reason: "Need to reproduce the failure.",
+            candidate_rankings: [],
           },
         ],
         tool_calls: [
@@ -169,8 +170,10 @@ describe("trace seam contract", () => {
             decision_id: "verifier-1",
             outcome: "approved",
             rationale: "Output is grounded.",
+            findings: [],
           },
         ],
+        terminal_status: "delivered",
         final_output: {
           output_id: "output-1",
           output_type: "text",
@@ -211,6 +214,7 @@ describe("trace seam contract", () => {
           },
         ],
         baseline_or_candidate_manifest_id: "candidate-manifest-repo-ci",
+        readiness_report_id: "repo-ci-specialist-readiness",
         planner_version_id: "planner-primary-v1",
         action_policy_version_id: "action-policy-v1",
         verifier_pack_version_id: "verifier-pack-v1",

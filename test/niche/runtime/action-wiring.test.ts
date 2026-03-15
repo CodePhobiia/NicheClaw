@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ToolHandlerContext } from "../../../src/agents/pi-embedded-subscribe.handlers.types.js";
 import {
   handleToolExecutionEnd,
   handleToolExecutionStart,
   handleToolExecutionUpdate,
 } from "../../../src/agents/pi-embedded-subscribe.handlers.tools.js";
+import type { ToolHandlerContext } from "../../../src/agents/pi-embedded-subscribe.handlers.types.js";
 import { wrapToolWithBeforeToolCallHook } from "../../../src/agents/pi-tools.before-tool-call.js";
 import type { AnyAgentTool } from "../../../src/agents/tools/common.js";
 import {
@@ -125,11 +125,7 @@ describe("Sprint 5.3 action wiring", () => {
     const snapshot = snapshotNicheRunTraceContext("run-1");
     expect(snapshot?.sessionId).toBe("session-main");
     expect(snapshot?.provider).toBe("openai");
-    expect(snapshot?.toolEvents.map((event) => event.phase)).toEqual([
-      "start",
-      "update",
-      "result",
-    ]);
+    expect(snapshot?.toolEvents.map((event) => event.phase)).toEqual(["start", "update", "result"]);
   });
 
   it("preserves existing behavior when NicheClaw mode is inactive", async () => {

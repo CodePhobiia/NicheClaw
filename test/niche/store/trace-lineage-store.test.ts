@@ -44,14 +44,19 @@ function makeRunTrace(): RunTrace {
       transcript_path: "agents/main/sessions/run-001.jsonl",
       route: "cli",
     },
-    planner_inputs: [{ stage_id: "planner-input-1", summary: "Benchmark prompt and repo context." }],
-    planner_outputs: [{ stage_id: "planner-output-1", summary: "Plan to inspect build failure and patch." }],
+    planner_inputs: [
+      { stage_id: "planner-input-1", summary: "Benchmark prompt and repo context." },
+    ],
+    planner_outputs: [
+      { stage_id: "planner-output-1", summary: "Plan to inspect build failure and patch." },
+    ],
     action_proposals: [
       {
         proposal_id: "proposal-1",
         selected_tool: "exec",
         selected_reason: "Need to reproduce the failure first.",
         guard_decision: "allowed",
+        candidate_rankings: [],
         attempt_index: 0,
       },
     ],
@@ -76,8 +81,10 @@ function makeRunTrace(): RunTrace {
         decision_id: "verifier-1",
         outcome: "approved",
         rationale: "Output is grounded in build evidence.",
+        findings: [],
       },
     ],
+    terminal_status: "delivered",
     final_output: {
       output_id: "final-output-1",
       output_type: "text",
@@ -102,6 +109,7 @@ function makeRunTrace(): RunTrace {
     failure_labels: ["nonzero_exit"],
     artifact_refs: [makeArtifactRef()],
     baseline_or_candidate_manifest_id: "candidate-manifest-repo-ci",
+    readiness_report_id: "repo-ci-specialist-readiness",
     planner_version_id: "planner-primary-v1",
     action_policy_version_id: "repo-ci-action-policy-v1",
     verifier_pack_version_id: "repo-ci-verifier-pack-v1",
@@ -180,9 +188,9 @@ describe("trace store", () => {
         trace_id: "",
       };
 
-      expect(() =>
-        appendRunTrace(invalidTrace as unknown as RunTrace, process.env),
-      ).toThrow(/Invalid run trace/u);
+      expect(() => appendRunTrace(invalidTrace as unknown as RunTrace, process.env)).toThrow(
+        /Invalid run trace/u,
+      );
     });
   });
 });

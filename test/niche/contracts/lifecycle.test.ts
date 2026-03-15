@@ -34,6 +34,7 @@ describe("lifecycle events", () => {
       "benchmark_case_started",
       "benchmark_case_finished",
       "candidate_promoted",
+      "candidate_rolled_back",
     ]);
   });
 
