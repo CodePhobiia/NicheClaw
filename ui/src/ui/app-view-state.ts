@@ -32,6 +32,9 @@ import type {
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { NicheBenchmarkEntry } from "./views/niche/NicheBenchmarks.ts";
+import type { NicheProgramEntry } from "./views/niche/NichePrograms.ts";
+import type { NicheRuntimeState } from "./views/niche/NicheRuntime.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
@@ -255,6 +258,15 @@ export type AppViewState = {
     logsLimit: number;
     logsMaxBytes: number;
     logsAtBottom: boolean;
+    nicheProgramsLoading: boolean;
+    nicheProgramsError: string | null;
+    nichePrograms: NicheProgramEntry[];
+    nicheBenchmarksLoading: boolean;
+    nicheBenchmarksError: string | null;
+    nicheBenchmarks: NicheBenchmarkEntry[];
+    nicheRuntimeLoading: boolean;
+    nicheRuntimeError: string | null;
+    nicheRuntimeState: NicheRuntimeState | null;
     updateAvailable: import("./types.js").UpdateAvailable | null;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;

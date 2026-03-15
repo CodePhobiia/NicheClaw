@@ -378,6 +378,17 @@ export class OpenClawApp extends LitElement {
   @state() logsMaxBytes = 250_000;
   @state() logsAtBottom = true;
 
+  @state() nicheProgramsLoading = false;
+  @state() nicheProgramsError: string | null = null;
+  @state() nichePrograms: import("./views/niche/NichePrograms.js").NicheProgramEntry[] = [];
+  @state() nicheBenchmarksLoading = false;
+  @state() nicheBenchmarksError: string | null = null;
+  @state() nicheBenchmarks: import("./views/niche/NicheBenchmarks.js").NicheBenchmarkEntry[] = [];
+  @state() nicheRuntimeLoading = false;
+  @state() nicheRuntimeError: string | null = null;
+  @state() nicheRuntimeState: import("./views/niche/NicheRuntime.js").NicheRuntimeState | null =
+    null;
+
   client: GatewayBrowserClient | null = null;
   private chatScrollFrame: number | null = null;
   private chatScrollTimeout: number | null = null;

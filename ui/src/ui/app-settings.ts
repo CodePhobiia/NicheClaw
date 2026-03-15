@@ -22,6 +22,7 @@ import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
+import { loadNichePrograms, loadNicheBenchmarks, loadNicheRuntime } from "./controllers/niche.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { loadSessions } from "./controllers/sessions.ts";
@@ -227,6 +228,15 @@ export async function refreshActiveTab(host: SettingsHost) {
     await loadDevices(host as unknown as OpenClawApp);
     await loadConfig(host as unknown as OpenClawApp);
     await loadExecApprovals(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "niche-programs") {
+    await loadNichePrograms(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "niche-benchmarks") {
+    await loadNicheBenchmarks(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "niche-runtime") {
+    await loadNicheRuntime(host as unknown as OpenClawApp);
   }
   if (host.tab === "chat") {
     await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);

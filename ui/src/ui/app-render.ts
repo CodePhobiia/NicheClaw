@@ -55,6 +55,7 @@ import {
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
+import { loadNichePrograms, loadNicheBenchmarks, loadNicheRuntime } from "./controllers/niche.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { deleteSessionAndRefresh, loadSessions, patchSession } from "./controllers/sessions.ts";
@@ -85,6 +86,9 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderInstances } from "./views/instances.ts";
 import { renderLogs } from "./views/logs.ts";
+import { renderNicheBenchmarks } from "./views/niche/NicheBenchmarks.ts";
+import { renderNichePrograms } from "./views/niche/NichePrograms.ts";
+import { renderNicheRuntime } from "./views/niche/NicheRuntime.ts";
 import { renderNodes } from "./views/nodes.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
@@ -947,6 +951,39 @@ export function renderApp(state: AppViewState) {
                       : { kind: "gateway" as const };
                   return saveExecApprovals(state, target);
                 },
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "niche-programs"
+            ? renderNichePrograms({
+                loading: state.nicheProgramsLoading,
+                error: state.nicheProgramsError,
+                programs: state.nichePrograms,
+                onRefresh: () => loadNichePrograms(state),
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "niche-benchmarks"
+            ? renderNicheBenchmarks({
+                loading: state.nicheBenchmarksLoading,
+                error: state.nicheBenchmarksError,
+                benchmarks: state.nicheBenchmarks,
+                onRefresh: () => loadNicheBenchmarks(state),
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "niche-runtime"
+            ? renderNicheRuntime({
+                loading: state.nicheRuntimeLoading,
+                error: state.nicheRuntimeError,
+                state: state.nicheRuntimeState,
+                onRefresh: () => loadNicheRuntime(state),
               })
             : nothing
         }

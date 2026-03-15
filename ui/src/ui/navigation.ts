@@ -8,6 +8,10 @@ export const TAB_GROUPS = [
     tabs: ["overview", "channels", "instances", "sessions", "usage", "cron"],
   },
   { label: "agent", tabs: ["agents", "skills", "nodes"] },
+  {
+    label: "nicheclaw",
+    tabs: ["niche-programs", "niche-benchmarks", "niche-runtime"],
+  },
   { label: "settings", tabs: ["config", "debug", "logs"] },
 ] as const;
 
@@ -22,6 +26,9 @@ export type Tab =
   | "skills"
   | "nodes"
   | "chat"
+  | "niche-programs"
+  | "niche-benchmarks"
+  | "niche-runtime"
   | "config"
   | "debug"
   | "logs";
@@ -37,6 +44,9 @@ const TAB_PATHS: Record<Tab, string> = {
   skills: "/skills",
   nodes: "/nodes",
   chat: "/chat",
+  "niche-programs": "/niche-programs",
+  "niche-benchmarks": "/niche-benchmarks",
+  "niche-runtime": "/niche-runtime",
   config: "/config",
   debug: "/debug",
   logs: "/logs",
@@ -151,6 +161,12 @@ export function iconForTab(tab: Tab): IconName {
       return "bug";
     case "logs":
       return "scrollText";
+    case "niche-programs":
+      return "brain";
+    case "niche-benchmarks":
+      return "barChart";
+    case "niche-runtime":
+      return "loader";
     default:
       return "folder";
   }
