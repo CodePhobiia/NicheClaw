@@ -1413,6 +1413,52 @@
                 "pages": ["start/hubs", "start/docs-directory"]
               }
             ]
+          },
+          {
+            "tab": "NicheClaw",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": ["niche/index", "niche/architecture", "niche/glossary"]
+              },
+              {
+                "group": "Concepts",
+                "pages": [
+                  "niche/concepts/niche-program",
+                  "niche/concepts/domain-pack",
+                  "niche/concepts/readiness",
+                  "niche/concepts/niche-stack",
+                  "niche/concepts/specialization-lanes"
+                ]
+              },
+              {
+                "group": "Guides",
+                "pages": [
+                  "niche/guides/getting-started",
+                  "niche/guides/quickstart-walkthrough",
+                  "niche/guides/improving-readiness",
+                  "niche/guides/first-benchmark",
+                  "niche/guides/release-promotion",
+                  "niche/debugging",
+                  "niche/lifecycle-events"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
+                  "niche/reference/artifact-formats",
+                  "niche/reference/cli-commands",
+                  "niche/reference/readiness-dimensions",
+                  "niche/reference/troubleshooting",
+                  "niche/faq",
+                  "niche/migration"
+                ]
+              },
+              {
+                "group": "Examples",
+                "pages": ["niche/examples/repo-ci-specialist"]
+              }
+            ]
           }
         ]
       },

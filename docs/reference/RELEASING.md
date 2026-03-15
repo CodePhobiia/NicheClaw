@@ -11,6 +11,8 @@ read_when:
 
 Use `pnpm` (Node 22+) from the repo root. Keep the working tree clean before tagging/publishing.
 
+For NicheClaw-specific pre-release validation, see [NicheClaw Release Checklist](/reference/niche-release-checklist).
+
 ## Operator trigger
 
 When the operator says “release”, immediately do this preflight (no extra questions unless blocked):
