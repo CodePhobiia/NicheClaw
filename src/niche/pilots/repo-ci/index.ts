@@ -1,4 +1,7 @@
-export { buildRepoCiSeedDomainPack, type RepoCiPilotDomainPackOptions } from "./seed-domain-pack.js";
+export {
+  buildRepoCiSeedDomainPack,
+  type RepoCiPilotDomainPackOptions,
+} from "./seed-domain-pack.js";
 export {
   buildRepoCiSeedBenchmarkSuites,
   type RepoCiPilotBenchmarkOptions,

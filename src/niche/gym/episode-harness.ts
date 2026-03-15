@@ -1,15 +1,12 @@
+import type { EpisodeCaseExecutionResult, EpisodeStepResult } from "../benchmark/index.js";
 import type { EpisodeCase } from "../schema/index.js";
-import type {
-  EpisodeCaseExecutionResult,
-  EpisodeStepResult,
-} from "../benchmark/index.js";
+import type { RepoCiEnvironmentController } from "./repo-ci-environment.js";
 import type {
   EpisodeReplayMetadata,
   RepoCiAction,
   RepoCiEpisodeTrace,
   RepoCiStepResult,
 } from "./types.js";
-import type { RepoCiEnvironmentController } from "./repo-ci-environment.js";
 
 export type EpisodeHarnessResult = {
   episode_result: EpisodeCaseExecutionResult;
@@ -71,22 +68,23 @@ export function runRepoCiEpisodeHarness(params: {
       total_score: totalScore,
       success,
       hard_fail: hardFail,
-      step_results: episodeStepResults.length > 0
-        ? episodeStepResults
-        : [
-            {
-              step_index: 0,
-              score: 0,
-              success: false,
-              hard_fail: true,
-              latency_ms: 0,
-              cost: 0,
-              tool_misuse: false,
-              verifier_intervention: false,
-              recovery_used: false,
-              notes: "Episode executed zero steps.",
-            },
-          ],
+      step_results:
+        episodeStepResults.length > 0
+          ? episodeStepResults
+          : [
+              {
+                step_index: 0,
+                score: 0,
+                success: false,
+                hard_fail: true,
+                latency_ms: 0,
+                cost: 0,
+                tool_misuse: false,
+                verifier_intervention: false,
+                recovery_used: false,
+                notes: "Episode executed zero steps.",
+              },
+            ],
       verifier_outcome: steps.some((step) => step.verifier_intervention)
         ? "repair_requested"
         : "approved",

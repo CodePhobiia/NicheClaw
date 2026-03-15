@@ -1,4 +1,9 @@
-import type { ActionCandidate, ActionCandidateRanking, ActionProposal, GuardDecision } from "./types.js";
+import type {
+  ActionCandidate,
+  ActionCandidateRanking,
+  ActionProposal,
+  GuardDecision,
+} from "./types.js";
 
 function roundScore(value: number): number {
   return Math.round(value * 10_000) / 10_000;

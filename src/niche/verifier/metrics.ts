@@ -32,9 +32,7 @@ function isInterventionOutcome(outcome: VerifierDecision["outcome"]): boolean {
   return outcome !== "approved";
 }
 
-export function computeVerifierMetrics(
-  inputs: VerifierMetricInput[],
-): VerifierMetricSummary {
+export function computeVerifierMetrics(inputs: VerifierMetricInput[]): VerifierMetricSummary {
   let truePositive = 0;
   let falsePositive = 0;
   let falseVeto = 0;

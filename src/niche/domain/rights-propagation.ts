@@ -10,10 +10,7 @@ export type DerivedRightsResult = {
   authorizationOverrideId?: string;
 };
 
-function mergeRight(
-  inputs: boolean[],
-  overrideValue: boolean | undefined,
-): boolean {
+function mergeRight(inputs: boolean[], overrideValue: boolean | undefined): boolean {
   if (typeof overrideValue === "boolean") {
     return overrideValue;
   }

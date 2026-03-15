@@ -160,8 +160,7 @@ function mergeFindings(params: {
   return sortFindings(
     params.findings.map((finding) => ({
       ...finding,
-      blocking:
-        finding.blocking || params.config.blocking_failure_ids.includes(finding.finding_id),
+      blocking: finding.blocking || params.config.blocking_failure_ids.includes(finding.finding_id),
     })),
   );
 }
@@ -294,6 +293,11 @@ export function toRunTraceVerifierDecisionRecord(
     decision_id: decision.decision_id,
     outcome: decision.outcome,
     rationale: decision.rationale,
+    findings: decision.findings.map((finding) => ({
+      finding_id: finding.finding_id,
+      severity: finding.severity,
+      message: finding.message,
+    })),
   };
 }
 

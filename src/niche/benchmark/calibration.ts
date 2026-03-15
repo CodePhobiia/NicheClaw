@@ -54,8 +54,7 @@ export function computeCalibrationMetrics(params: {
 
   const precisionDenominator = truePositive + falsePositive;
   const recallDenominator = truePositive + falseNegative;
-  const precision =
-    precisionDenominator === 0 ? 0 : truePositive / precisionDenominator;
+  const precision = precisionDenominator === 0 ? 0 : truePositive / precisionDenominator;
   const recall = recallDenominator === 0 ? 0 : truePositive / recallDenominator;
   const agreementRate = examples.length === 0 ? 0 : exactMatches / examples.length;
 

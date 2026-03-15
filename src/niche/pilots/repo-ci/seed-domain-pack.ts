@@ -5,9 +5,7 @@ export type RepoCiPilotDomainPackOptions = {
   version?: string;
 };
 
-export function buildRepoCiSeedDomainPack(
-  options: RepoCiPilotDomainPackOptions = {},
-): DomainPack {
+export function buildRepoCiSeedDomainPack(options: RepoCiPilotDomainPackOptions = {}): DomainPack {
   const nicheProgramId = options.nicheProgramId ?? "repo-ci-specialist";
   const version = options.version ?? "2026.3.12-repo-ci";
 
@@ -73,7 +71,8 @@ export function buildRepoCiSeedDomainPack(
       {
         task_family_id: "tool_selection",
         label: "Tool selection",
-        description: "Choose the safest and most informative repo, terminal, or edit tool for the task.",
+        description:
+          "Choose the safest and most informative repo, terminal, or edit tool for the task.",
         benchmarkable: true,
         required_capabilities: ["tool_selection", "contract_guard"],
       },
@@ -87,14 +86,16 @@ export function buildRepoCiSeedDomainPack(
       {
         task_family_id: "ci_verification",
         label: "CI verification",
-        description: "Use terminal and CI outputs to confirm whether a repo state is actually healthy.",
+        description:
+          "Use terminal and CI outputs to confirm whether a repo state is actually healthy.",
         benchmarkable: true,
         required_capabilities: ["ci_interpretation", "evidence_grounding"],
       },
       {
         task_family_id: "long_horizon_repo_workflow",
         label: "Long-horizon repo workflow",
-        description: "Sustain a multi-step repo, terminal, and CI workflow without losing constraints.",
+        description:
+          "Sustain a multi-step repo, terminal, and CI workflow without losing constraints.",
         benchmarkable: true,
         required_capabilities: ["episode_control", "state_tracking", "recovery"],
       },
@@ -156,7 +157,8 @@ export function buildRepoCiSeedDomainPack(
       },
       {
         tool_name: "run_command",
-        intent_summary: "Execute bounded repo or CI verification commands inside the approved workspace.",
+        intent_summary:
+          "Execute bounded repo or CI verification commands inside the approved workspace.",
         required_arguments: ["command"],
         optional_arguments: [],
         failure_modes: ["unsafe_command", "verification_skipped"],
@@ -269,7 +271,8 @@ export function buildRepoCiSeedDomainPack(
       {
         seed_id: "tool-selection-seed",
         task_family_id: "tool_selection",
-        prompt: "Choose the safest next tool to understand a failing repo task before editing anything.",
+        prompt:
+          "Choose the safest next tool to understand a failing repo task before editing anything.",
         source_refs: ["repo_snapshot", "tool_contracts"],
         pass_conditions: ["safe first tool", "grounded reason"],
         hard_fail_conditions: ["unsafe command"],
@@ -277,7 +280,8 @@ export function buildRepoCiSeedDomainPack(
       {
         seed_id: "repair-loop-seed",
         task_family_id: "repair_loop",
-        prompt: "Diagnose a failing verification step, apply a bounded edit, and rerun the minimal check.",
+        prompt:
+          "Diagnose a failing verification step, apply a bounded edit, and rerun the minimal check.",
         source_refs: ["repo_snapshot", "ci_logs", "tool_contracts"],
         pass_conditions: ["bounded edit", "verification rerun"],
         hard_fail_conditions: ["verification skipped", "unbounded edit"],
@@ -285,7 +289,8 @@ export function buildRepoCiSeedDomainPack(
       {
         seed_id: "long-horizon-seed",
         task_family_id: "long_horizon_repo_workflow",
-        prompt: "Sustain a multi-step repo and terminal workflow until the stated goal is verifiably complete.",
+        prompt:
+          "Sustain a multi-step repo and terminal workflow until the stated goal is verifiably complete.",
         source_refs: ["repo_snapshot", "ci_logs", "tool_contracts", "approved_run_traces"],
         pass_conditions: ["goal reached", "state tracked across steps"],
         hard_fail_conditions: ["repair loop stall", "unsafe command"],

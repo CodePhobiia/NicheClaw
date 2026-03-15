@@ -3,6 +3,8 @@ import { Type } from "@sinclair/typebox";
 import {
   BenchmarkCaseReferenceSchema,
   IdentifierString,
+  NicheStackReleaseModeSchema,
+  NicheStackResolutionSourceSchema,
   NonEmptyString,
   ReplayabilityStatusSchema,
   TimestampString,
@@ -19,6 +21,7 @@ export const LIFECYCLE_EVENT_TYPES = [
   "benchmark_case_started",
   "benchmark_case_finished",
   "candidate_promoted",
+  "candidate_rolled_back",
 ] as const;
 export const LifecycleEventTypeSchema = stringEnum(LIFECYCLE_EVENT_TYPES);
 
@@ -37,6 +40,9 @@ export const PlannerProposedPayloadSchema = Type.Object(
     selected_manifest_id: IdentifierString,
     planner_runtime_component_id: IdentifierString,
     benchmark_suite_id: Type.Optional(IdentifierString),
+    active_stack_id: Type.Optional(IdentifierString),
+    resolution_source: Type.Optional(NicheStackResolutionSourceSchema),
+    resolved_release_mode: Type.Optional(NicheStackReleaseModeSchema),
   },
   { additionalProperties: false },
 );
@@ -86,6 +92,16 @@ export const CandidatePromotedPayloadSchema = Type.Object(
   {
     candidate_release_id: IdentifierString,
     rollback_target: IdentifierString,
+  },
+  { additionalProperties: false },
+);
+
+export const CandidateRolledBackPayloadSchema = Type.Object(
+  {
+    rolled_back_stack_id: IdentifierString,
+    rollback_target: IdentifierString,
+    reason: NonEmptyString,
+    overlays_cleared: Type.Number({ minimum: 0 }),
   },
   { additionalProperties: false },
 );
@@ -162,6 +178,15 @@ export const CandidatePromotedEventSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const CandidateRolledBackEventSchema = Type.Object(
+  {
+    ...LifecycleEnvelopeFields,
+    event_type: Type.Literal("candidate_rolled_back"),
+    payload: CandidateRolledBackPayloadSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const LifecycleEventSchema = Type.Union([
   PlannerProposedEventSchema,
   ActionProposedEventSchema,
@@ -171,6 +196,7 @@ export const LifecycleEventSchema = Type.Union([
   BenchmarkCaseStartedEventSchema,
   BenchmarkCaseFinishedEventSchema,
   CandidatePromotedEventSchema,
+  CandidateRolledBackEventSchema,
 ]);
 
 export type LifecycleEventType = Static<typeof LifecycleEventTypeSchema>;
@@ -182,6 +208,7 @@ export type RunTracePersistedPayload = Static<typeof RunTracePersistedPayloadSch
 export type BenchmarkCaseStartedPayload = Static<typeof BenchmarkCaseStartedPayloadSchema>;
 export type BenchmarkCaseFinishedPayload = Static<typeof BenchmarkCaseFinishedPayloadSchema>;
 export type CandidatePromotedPayload = Static<typeof CandidatePromotedPayloadSchema>;
+export type CandidateRolledBackPayload = Static<typeof CandidateRolledBackPayloadSchema>;
 export type PlannerProposedEvent = Static<typeof PlannerProposedEventSchema>;
 export type ActionProposedEvent = Static<typeof ActionProposedEventSchema>;
 export type ActionValidatedEvent = Static<typeof ActionValidatedEventSchema>;
@@ -190,4 +217,5 @@ export type RunTracePersistedEvent = Static<typeof RunTracePersistedEventSchema>
 export type BenchmarkCaseStartedEvent = Static<typeof BenchmarkCaseStartedEventSchema>;
 export type BenchmarkCaseFinishedEvent = Static<typeof BenchmarkCaseFinishedEventSchema>;
 export type CandidatePromotedEvent = Static<typeof CandidatePromotedEventSchema>;
+export type CandidateRolledBackEvent = Static<typeof CandidateRolledBackEventSchema>;
 export type LifecycleEvent = Static<typeof LifecycleEventSchema>;

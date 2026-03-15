@@ -1,3 +1,4 @@
+import { computeEnvironmentSnapshotHash } from "../benchmark/index.js";
 import {
   computeRepoCiEnvironmentStateHash,
   computeRepoCiFixtureHash,
@@ -7,7 +8,6 @@ import {
   type RepoCiFixture,
   type RepoCiStepResult,
 } from "./types.js";
-import { computeEnvironmentSnapshotHash } from "../benchmark/index.js";
 
 function cloneFiles(files: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
@@ -18,16 +18,17 @@ function cloneFiles(files: Record<string, string>): Record<string, string> {
 export type RepoCiEnvironmentController = {
   fixture: Readonly<RepoCiFixture>;
   reset: (seed: string) => RepoCiEnvironmentState;
-  step: (state: RepoCiEnvironmentState, action: RepoCiAction) => {
+  step: (
+    state: RepoCiEnvironmentState,
+    action: RepoCiAction,
+  ) => {
     state: RepoCiEnvironmentState;
     result: RepoCiStepResult;
   };
   replay: (seed: string, actions: RepoCiAction[]) => RepoCiEnvironmentState;
 };
 
-export function createRepoCiEnvironment(
-  fixture: RepoCiFixture,
-): RepoCiEnvironmentController {
+export function createRepoCiEnvironment(fixture: RepoCiFixture): RepoCiEnvironmentController {
   const frozenFixture = freezeRepoCiFixture(fixture);
   const fixtureHash = computeRepoCiFixtureHash(frozenFixture);
   const environmentSnapshotHash = computeEnvironmentSnapshotHash(

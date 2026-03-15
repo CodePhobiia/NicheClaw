@@ -34,7 +34,11 @@ const STOP_WORDS = new Set([
 ]);
 
 function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function tokenize(value: string): string[] {
@@ -73,9 +77,7 @@ function isClaimSupported(claim: string, evidenceTexts: string[]): boolean {
   return false;
 }
 
-export function evaluateEvidenceGrounding(
-  params: GroundingCheckInput,
-): GroundingCheckResult {
+export function evaluateEvidenceGrounding(params: GroundingCheckInput): GroundingCheckResult {
   const findings: VerifierFinding[] = [];
   const allowedSourceIds = new Set([
     ...params.sourceAccessManifest.allowed_retrieval_indices,
@@ -133,8 +135,7 @@ export function evaluateEvidenceGrounding(
     isClaimSupported(claim, evidenceTexts),
   ).length;
   const unsupportedClaimCount = claims.length - supportedClaimCount;
-  const evidenceSupportRatio =
-    claims.length === 0 ? 1 : supportedClaimCount / claims.length;
+  const evidenceSupportRatio = claims.length === 0 ? 1 : supportedClaimCount / claims.length;
 
   if (unsupportedClaimCount > params.maxAllowedUngroundedClaims) {
     findings.push({

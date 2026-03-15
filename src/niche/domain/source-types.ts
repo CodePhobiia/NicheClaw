@@ -1,18 +1,21 @@
-import type { SourceKind } from "../schema/index.js";
+import type { DataZone, QuarantineReason, SourceKind } from "../schema/index.js";
 
-export type SourceInputKind =
-  | "local_file"
-  | "repo_asset"
-  | "structured_text"
-  | "benchmark_seed";
+export type SourceInputKind = "local_file" | "repo_asset" | "structured_text" | "benchmark_seed";
 
 export type SourceRightsMetadata = {
   rights_to_store: boolean;
   rights_to_train: boolean;
   rights_to_benchmark: boolean;
+  rights_to_derive: boolean;
+  rights_to_distill: boolean;
+  rights_to_generate_synthetic_from: boolean;
   retention_policy: string;
   redaction_status: string;
   pii_status: string;
+  provenance_status: string;
+  data_zone: DataZone;
+  quarantined?: boolean;
+  quarantine_reason?: QuarantineReason;
 };
 
 export type SourceProvenance = {
@@ -72,6 +75,15 @@ export type NormalizedSourceRecord = {
   normalizedContent: string;
   rights: SourceRightsMetadata;
   provenance: SourceProvenance;
+  governedDataStatus: {
+    data_zone: DataZone;
+    retention_policy: string;
+    redaction_status: string;
+    pii_status: string;
+    provenance_status: string;
+    quarantined: boolean;
+    quarantine_reason?: QuarantineReason;
+  };
   freshnessExpectation?: string;
   trustNotes?: string;
   benchmarkSeed?: {

@@ -17,6 +17,11 @@ export {
   type AtomicPairedCaseResult,
 } from "./atomic-runner.js";
 export {
+  detectBenchmarkContamination,
+  runLiveAtomicBenchmark,
+  runLiveEpisodeBenchmark,
+} from "./live-benchmark.js";
+export {
   runEpisodeBenchmark,
   EpisodeBenchmarkRunResultSchema,
   EpisodeBenchmarkSuiteRecordSchema,
@@ -56,14 +61,17 @@ export {
 export {
   createArbitrationArtifact,
   createBenchmarkFixtureMetadata,
+  createGraderCalibrationRecord,
   createGraderArtifact,
   createGraderSet,
   getArbitrationArtifact,
   getBenchmarkFixtureMetadata,
+  getGraderCalibrationRecord,
   getGraderArtifact,
   getGraderSet,
   listArbitrationArtifacts,
   listBenchmarkFixtureMetadata,
+  listGraderCalibrationRecords,
   listGraderArtifacts,
   listGraderSets,
   BenchmarkFixtureMetadataSchema,
@@ -91,3 +99,7 @@ export {
   AtomicBenchmarkSuiteRecordSchema,
   type AtomicBenchmarkSuiteRecord,
 } from "./suite-registry.js";
+export {
+  resolveBenchmarkRecordTemplateManifestIds,
+  validateBenchmarkRecordBindingsAgainstInput,
+} from "./record-bindings.js";

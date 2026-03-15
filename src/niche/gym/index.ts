@@ -1,7 +1,4 @@
-export {
-  runRepoCiEpisodeHarness,
-  type EpisodeHarnessResult,
-} from "./episode-harness.js";
+export { runRepoCiEpisodeHarness, type EpisodeHarnessResult } from "./episode-harness.js";
 export {
   createRepoCiEnvironment,
   type RepoCiEnvironmentController,

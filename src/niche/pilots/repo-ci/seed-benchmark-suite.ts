@@ -14,9 +14,7 @@ function computeSuiteHash(payload: unknown): string {
   return computeBenchmarkSuiteHash(payload);
 }
 
-export function buildRepoCiSeedBenchmarkSuites(
-  options: RepoCiPilotBenchmarkOptions = {},
-): {
+export function buildRepoCiSeedBenchmarkSuites(options: RepoCiPilotBenchmarkOptions = {}): {
   atomicSuite: AtomicBenchmarkSuiteRecord;
   episodeSuite: EpisodeBenchmarkSuiteRecord;
 } {

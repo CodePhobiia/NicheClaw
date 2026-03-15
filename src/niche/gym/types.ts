@@ -1,4 +1,7 @@
-import { computeBenchmarkFixturePackHash, computeEnvironmentSnapshotHash } from "../benchmark/index.js";
+import {
+  computeBenchmarkFixturePackHash,
+  computeEnvironmentSnapshotHash,
+} from "../benchmark/index.js";
 
 export type RepoCiCommandResult = {
   success: boolean;
@@ -102,17 +105,13 @@ export function computeRepoCiFixtureHash(fixture: RepoCiFixture): string {
     fixtureId: fixture.fixture_id,
     rootDir: fixture.root_dir,
     files: fixture.files,
-    allowedTools: [...fixture.allowed_tools].toSorted((left, right) =>
-      left.localeCompare(right),
-    ),
+    allowedTools: [...fixture.allowed_tools].toSorted((left, right) => left.localeCompare(right)),
     commands: fixture.command_results,
     initialCiStatus: fixture.initial_ci_status,
   });
 }
 
-export function computeRepoCiEnvironmentStateHash(
-  state: RepoCiEnvironmentState,
-): string {
+export function computeRepoCiEnvironmentStateHash(state: RepoCiEnvironmentState): string {
   return computeEnvironmentSnapshotHash({
     fixtureId: state.fixture_id,
     seed: state.seed,

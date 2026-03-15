@@ -1,8 +1,7 @@
 import type { DomainPack, FailureMode, NicheProgram } from "../schema/index.js";
-import type {
-  CompilerBenchmarkSeedHint,
-  NormalizedSourceRecord,
-} from "./source-types.js";
+import type { ArtifactRef } from "../schema/index.js";
+import { ensureArtifactRecord, getParentsForArtifact, writeLineageEdges } from "../store/index.js";
+import type { CompilerBenchmarkSeedHint, NormalizedSourceRecord } from "./source-types.js";
 
 function toIdentifier(value: string): string {
   return value
@@ -61,12 +60,12 @@ export function compileDomainPack(params: {
     .filter((source) => source.benchmarkSeed !== undefined)
     .map((source) => ({
       seedId: `${source.sourceId}-seed`,
-      taskFamilyId: source.benchmarkSeed?.taskFamilyId ?? `${toIdentifier(source.sourceKind)}-analysis`,
+      taskFamilyId:
+        source.benchmarkSeed?.taskFamilyId ?? `${toIdentifier(source.sourceKind)}-analysis`,
       prompt: source.benchmarkSeed?.prompt ?? source.normalizedContent,
       sourceRefs: [source.sourceId],
       passConditions: source.benchmarkSeed?.passConditions ?? ["grounded_response"],
-      hardFailConditions:
-        source.benchmarkSeed?.hardFailConditions ?? ["unapproved_source_use"],
+      hardFailConditions: source.benchmarkSeed?.hardFailConditions ?? ["unapproved_source_use"],
     }));
 
   if (benchmarkSeedHints.length === 0 && sources.length > 0) {
@@ -127,8 +126,8 @@ export function compileDomainPack(params: {
       {
         constraint_id: "allowed-tools-only",
         category: "tooling",
-        rule: "Only operator-approved tools may be used during execution.",
-        rationale: "Keeps the niche bounded to the declared workflow surface.",
+        rule: "must_not_include:unapproved_tool_invocation",
+        rationale: "Only operator-approved tools may be used during execution.",
         severity: params.nicheProgram.risk_class,
       },
     ],
@@ -162,4 +161,71 @@ export function compileDomainPack(params: {
     benchmarkSeedHints,
     evidenceSourceRegistry,
   };
+}
+
+export function materializeCompiledDomainPackArtifact(params: {
+  domainPack: DomainPack;
+  sourceArtifactRefs: ArtifactRef[];
+  createdAt?: string;
+  env?: NodeJS.ProcessEnv;
+}): ReturnType<typeof ensureArtifactRecord> {
+  if (params.sourceArtifactRefs.length === 0) {
+    throw new Error("Compiled domain packs require store-backed source artifacts.");
+  }
+  const createdAt = params.createdAt ?? new Date().toISOString();
+  const lineage = [...params.sourceArtifactRefs]
+    .toSorted((left, right) => left.artifact_id.localeCompare(right.artifact_id))
+    .map((ref) => ({
+      parent_artifact_id: ref.artifact_id,
+      relationship: "compiled_from",
+      derivation_step: "domain_pack_compile",
+      notes: `Domain pack ${params.domainPack.domain_pack_id} compiles approved source artifact ${ref.artifact_id}.`,
+    }));
+  const artifact = {
+    artifact_id: params.domainPack.domain_pack_id,
+    artifact_type: "domain_pack" as const,
+    version: params.domainPack.version,
+    producer: "niche.domain.compiler",
+    source_trace_refs: [],
+    dataset_refs: params.sourceArtifactRefs.map((ref) => ref.artifact_id),
+    metrics: {
+      source_artifact_count: params.sourceArtifactRefs.length,
+    },
+    created_at: createdAt,
+    lineage,
+  };
+  const created = ensureArtifactRecord({
+    artifact,
+    rightsState: params.sourceArtifactRefs
+      .map((ref) => ref.rights_state)
+      .reduce(
+        (acc, rights) => ({
+          rights_to_store: acc.rights_to_store && rights.rights_to_store,
+          rights_to_train: acc.rights_to_train && rights.rights_to_train,
+          rights_to_benchmark: acc.rights_to_benchmark && rights.rights_to_benchmark,
+          rights_to_derive: acc.rights_to_derive && rights.rights_to_derive,
+          rights_to_distill: acc.rights_to_distill && rights.rights_to_distill,
+          rights_to_generate_synthetic_from:
+            acc.rights_to_generate_synthetic_from && rights.rights_to_generate_synthetic_from,
+        }),
+        {
+          rights_to_store: true,
+          rights_to_train: true,
+          rights_to_benchmark: true,
+          rights_to_derive: true,
+          rights_to_distill: true,
+          rights_to_generate_synthetic_from: true,
+        },
+      ),
+    env: params.env,
+  });
+  const existingLineage = getParentsForArtifact(artifact.artifact_id, params.env);
+  if (existingLineage.length === 0) {
+    writeLineageEdges(artifact.artifact_id, lineage, params.env);
+  } else if (JSON.stringify(existingLineage) !== JSON.stringify(lineage)) {
+    throw new Error(
+      `Lineage for ${artifact.artifact_id} is already stored with different content.`,
+    );
+  }
+  return created;
 }

@@ -32,9 +32,7 @@ export const BenchmarkInvalidationReasonSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export type BenchmarkInvalidationReasonCode = Static<
-  typeof BenchmarkInvalidationReasonCodeSchema
->;
+export type BenchmarkInvalidationReasonCode = Static<typeof BenchmarkInvalidationReasonCodeSchema>;
 export type BenchmarkInvalidationReason = Static<typeof BenchmarkInvalidationReasonSchema>;
 
 export function collectManifestInvalidationReasons(
@@ -51,14 +49,14 @@ export function collectManifestInvalidationReasons(
 export function collectBenchmarkInvalidationReasons(params: {
   baselineManifest: BaselineManifest;
   candidateManifest: CandidateManifest;
-  contaminationDetected?: boolean;
+  contaminationDetected: boolean;
   suiteChangedDuringComparison?: boolean;
   expectedSuiteHash?: string;
-  actualSuiteHash?: string;
+  actualSuiteHash: string;
   expectedGraderVersion?: string;
-  actualGraderVersion?: string;
+  actualGraderVersion: string;
   expectedFixtureVersion?: string;
-  actualFixtureVersion?: string;
+  actualFixtureVersion: string;
   expectedSourceAccessManifestId?: string;
   actualSourceAccessManifestId?: string;
 }): BenchmarkInvalidationReason[] {
@@ -128,8 +126,6 @@ export function collectBenchmarkInvalidationReasons(params: {
   return reasons;
 }
 
-export function isBenchmarkInvalidated(
-  reasons: BenchmarkInvalidationReason[],
-): boolean {
+export function isBenchmarkInvalidated(reasons: BenchmarkInvalidationReason[]): boolean {
   return reasons.length > 0;
 }

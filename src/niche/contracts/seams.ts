@@ -12,7 +12,12 @@ import {
   stringEnum,
 } from "../schema/index.js";
 
-export const VERIFIER_SEAM_OUTCOMES = ["approved", "repair_requested", "escalated", "vetoed"] as const;
+export const VERIFIER_SEAM_OUTCOMES = [
+  "approved",
+  "repair_requested",
+  "escalated",
+  "vetoed",
+] as const;
 export const VerifierSeamOutcomeSchema = stringEnum(VERIFIER_SEAM_OUTCOMES);
 
 export const PlannerSeamInputSchema = Type.Object(

@@ -4,17 +4,19 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   ArbitrationArtifactSchema,
   ArtifactRefSchema,
+  GraderCalibrationRecordSchema,
   GraderArtifactSchema,
   IdentifierString,
   NonEmptyString,
   TimestampString,
   type ArbitrationArtifact,
+  type GraderCalibrationRecord,
   type GraderArtifact,
 } from "../schema/index.js";
-import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "../store/index.js";
 
 export const BenchmarkFixtureMetadataSchema = Type.Object(
@@ -47,6 +49,7 @@ const GRADER_ARTIFACT_CACHE_KEY = "niche-benchmark-grader-artifact";
 const ARBITRATION_ARTIFACT_CACHE_KEY = "niche-benchmark-arbitration-artifact";
 const FIXTURE_METADATA_CACHE_KEY = "niche-benchmark-fixture-metadata";
 const GRADER_SET_CACHE_KEY = "niche-benchmark-grader-set";
+const GRADER_CALIBRATION_CACHE_KEY = "niche-benchmark-grader-calibration";
 
 function resolveGradersRoot(env: NodeJS.ProcessEnv = process.env): string {
   return resolveNicheStoreRoots(env).graders;
@@ -136,24 +139,12 @@ export function getGraderArtifact(
   if (!raw) {
     return null;
   }
-  return assertValue(
-    GraderArtifactSchema,
-    GRADER_ARTIFACT_CACHE_KEY,
-    raw,
-    "grader artifact",
-  );
+  return assertValue(GraderArtifactSchema, GRADER_ARTIFACT_CACHE_KEY, raw, "grader artifact");
 }
 
-export function listGraderArtifacts(
-  env: NodeJS.ProcessEnv = process.env,
-): GraderArtifact[] {
+export function listGraderArtifacts(env: NodeJS.ProcessEnv = process.env): GraderArtifact[] {
   return listRecords<GraderArtifact>(resolveSubdir("grader-artifacts", env)).map((grader) =>
-    assertValue(
-      GraderArtifactSchema,
-      GRADER_ARTIFACT_CACHE_KEY,
-      grader,
-      "grader artifact",
-    ),
+    assertValue(GraderArtifactSchema, GRADER_ARTIFACT_CACHE_KEY, grader, "grader artifact"),
   );
 }
 
@@ -281,10 +272,63 @@ export function getGraderSet(
   return assertValue(GraderSetRecordSchema, GRADER_SET_CACHE_KEY, raw, "grader set");
 }
 
-export function listGraderSets(
-  env: NodeJS.ProcessEnv = process.env,
-): GraderSetRecord[] {
+export function listGraderSets(env: NodeJS.ProcessEnv = process.env): GraderSetRecord[] {
   return listRecords<GraderSetRecord>(resolveSubdir("grader-sets", env)).map((graderSet) =>
     assertValue(GraderSetRecordSchema, GRADER_SET_CACHE_KEY, graderSet, "grader set"),
+  );
+}
+
+function resolveCalibrationRecordId(graderSetId: string, graderId: string): string {
+  return `${graderSetId}--${graderId}`;
+}
+
+export function createGraderCalibrationRecord(
+  calibration: GraderCalibrationRecord,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const validated = assertValue(
+    GraderCalibrationRecordSchema,
+    GRADER_CALIBRATION_CACHE_KEY,
+    calibration,
+    "grader calibration record",
+  );
+  return writeUniqueRecord(
+    resolveSubdir("grader-calibrations", env),
+    resolveCalibrationRecordId(validated.grader_set_id, validated.grader_id),
+    validated,
+  );
+}
+
+export function getGraderCalibrationRecord(
+  graderSetId: string,
+  graderId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): GraderCalibrationRecord | null {
+  const raw = readRecord<GraderCalibrationRecord>(
+    resolveSubdir("grader-calibrations", env),
+    resolveCalibrationRecordId(graderSetId, graderId),
+  );
+  if (!raw) {
+    return null;
+  }
+  return assertValue(
+    GraderCalibrationRecordSchema,
+    GRADER_CALIBRATION_CACHE_KEY,
+    raw,
+    "grader calibration record",
+  );
+}
+
+export function listGraderCalibrationRecords(
+  env: NodeJS.ProcessEnv = process.env,
+): GraderCalibrationRecord[] {
+  return listRecords<GraderCalibrationRecord>(resolveSubdir("grader-calibrations", env)).map(
+    (record) =>
+      assertValue(
+        GraderCalibrationRecordSchema,
+        GRADER_CALIBRATION_CACHE_KEY,
+        record,
+        "grader calibration record",
+      ),
   );
 }

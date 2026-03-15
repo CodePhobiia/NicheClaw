@@ -4,13 +4,13 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   BenchmarkArmIdentifierSchema,
   BenchmarkSuiteMetadataSchema,
   EvalCaseSchema,
   type BenchmarkArmIdentifier,
 } from "../schema/index.js";
-import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "../store/index.js";
 
 export const AtomicBenchmarkSuiteRecordSchema = Type.Object(
@@ -34,10 +34,7 @@ function resolveBenchmarkArmRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveNicheStoreRoots(env).benchmarkRuns, "arms");
 }
 
-function resolveBenchmarkSuitePath(
-  suiteId: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function resolveBenchmarkSuitePath(suiteId: string, env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveBenchmarkSuiteRoot(env), `${suiteId}.json`);
 }
 

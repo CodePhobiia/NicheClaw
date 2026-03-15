@@ -50,9 +50,7 @@ function toFinding(params: {
     finding_id: params.id,
     category: params.category,
     severity: normalizedSeverity,
-    blocking:
-      params.blocking ??
-      normalizedSeverity === "high",
+    blocking: params.blocking ?? normalizedSeverity === "high",
     message: params.message,
     evidence_source_ids: [],
     remediation: params.remediation,
@@ -83,9 +81,7 @@ function evaluateConstraintRule(
   }
 
   if (lowerRule.startsWith("must_not_include:") || lowerRule.startsWith("forbid:")) {
-    const prefix = lowerRule.startsWith("must_not_include:")
-      ? "must_not_include:"
-      : "forbid:";
+    const prefix = lowerRule.startsWith("must_not_include:") ? "must_not_include:" : "forbid:";
     const forbidden = rule.slice(prefix.length).trim();
     if (!normalizeText(forbidden) || !normalizedOutput.includes(normalizeText(forbidden))) {
       return null;
@@ -165,7 +161,8 @@ function evaluateOutputRequirement(
       id: "markdown_output",
       category: "format",
       severity: "moderate",
-      message: "Verifier requires markdown-style output, but the candidate output does not look like markdown.",
+      message:
+        "Verifier requires markdown-style output, but the candidate output does not look like markdown.",
       remediation: "Repair the answer to use markdown formatting.",
     });
   }
@@ -227,17 +224,11 @@ function evaluateOutputRequirement(
   return null;
 }
 
-export function evaluateDomainConstraints(
-  params: ConstraintCheckInput,
-): ConstraintCheckResult {
+export function evaluateDomainConstraints(params: ConstraintCheckInput): ConstraintCheckResult {
   const findings: VerifierFinding[] = [];
 
   for (const constraint of params.domainPack.constraints) {
-    const finding = evaluateConstraintRule(
-      constraint,
-      params.candidateOutput,
-      params.outputFormat,
-    );
+    const finding = evaluateConstraintRule(constraint, params.candidateOutput, params.outputFormat);
     if (finding) {
       findings.push(finding);
     }
@@ -264,7 +255,8 @@ export function evaluateDomainConstraints(
         category: "release_policy",
         severity: "high",
         message: `Verifier latency budget exceeded: ${params.latencyAddedMs}ms > ${params.releaseGuardrails.max_latency_added_ms}ms.`,
-        remediation: "Do not promote or deliver this output until the latency regression is repaired.",
+        remediation:
+          "Do not promote or deliver this output until the latency regression is repaired.",
       }),
     );
   }

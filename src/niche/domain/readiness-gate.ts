@@ -7,10 +7,7 @@ import type {
   ReadinessWarning,
 } from "../schema/index.js";
 import { isReadyForSpecialization } from "../schema/index.js";
-import {
-  DEFAULT_READINESS_THRESHOLDS,
-  type ReadinessThresholds,
-} from "./readiness-thresholds.js";
+import { DEFAULT_READINESS_THRESHOLDS, type ReadinessThresholds } from "./readiness-thresholds.js";
 
 export type ReadinessGateInput = {
   nicheProgramId: string;
@@ -192,8 +189,7 @@ function buildRecommendedActions(
 
   if (
     blockers.some(
-      (blocker) =>
-        blocker.blocker_code === "source_coverage_too_low_for_benchmarkable_domain_pack",
+      (blocker) => blocker.blocker_code === "source_coverage_too_low_for_benchmarkable_domain_pack",
     )
   ) {
     actions.push({
@@ -230,9 +226,7 @@ function buildRecommendedActions(
   return actions;
 }
 
-export function evaluateReadinessGate(
-  input: ReadinessGateInput,
-): ReadinessReport {
+export function evaluateReadinessGate(input: ReadinessGateInput): ReadinessReport {
   const thresholds = input.thresholds ?? DEFAULT_READINESS_THRESHOLDS;
   const dimensionScores = buildDimensionScores(input.dimensionValues);
   const hardBlockers = buildHardBlockers(input, thresholds);
@@ -240,11 +234,7 @@ export function evaluateReadinessGate(
   const recommendedNextActions = buildRecommendedActions(hardBlockers, warnings);
 
   const status =
-    hardBlockers.length > 0
-      ? "not_ready"
-      : warnings.length > 0
-        ? "ready_with_warnings"
-        : "ready";
+    hardBlockers.length > 0 ? "not_ready" : warnings.length > 0 ? "ready_with_warnings" : "ready";
 
   return {
     readiness_report_id: `${input.nicheProgramId}-readiness`,
@@ -273,8 +263,6 @@ export function buildReadinessRefusal(report: ReadinessReport): {
   return {
     ready: false,
     report,
-    reason:
-      report.hard_blockers[0]?.message ??
-      "The niche is not ready for specialization.",
+    reason: report.hard_blockers[0]?.message ?? "The niche is not ready for specialization.",
   };
 }
