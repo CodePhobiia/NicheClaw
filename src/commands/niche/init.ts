@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { saveJsonFile } from "../../infra/json-file.js";
+import { NicheProgramSchema, type NicheProgram } from "../../niche/schema/index.js";
+import { resolveNicheStoreRoots, resolveNicheStateRoot } from "../../niche/store/index.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { defaultRuntime } from "../../runtime.js";
-import { NicheProgramSchema, type NicheProgram } from "../../niche/schema/index.js";
-import { resolveNicheStoreRoots, resolveNicheStateRoot } from "../../niche/store/index.js";
 
 type AnchorName = "PRD.md" | "ARCHITECTURE.md";
 
@@ -63,10 +63,7 @@ function validateAnchor(repoRoot: string, name: AnchorName): NicheInitAnchorStat
   };
 }
 
-function buildStarterProgram(params: {
-  programId: string;
-  programName: string;
-}): NicheProgram {
+function buildStarterProgram(params: { programId: string; programName: string }): NicheProgram {
   return assertStarterProgram({
     niche_program_id: params.programId,
     name: params.programName,
@@ -100,24 +97,22 @@ function buildStarterProgram(params: {
           notes: "Starter verifier pack for grounding, constraint, and delivery checks.",
         },
       ],
-      specialization_lanes: [
-        "system_specialization",
-        "distillation",
-        "prompt_policy_assets",
-      ],
+      specialization_lanes: ["system_specialization", "distillation", "prompt_policy_assets"],
     },
     allowed_tools: ["read_file", "run_command", "write_file"],
     allowed_sources: [
       {
         source_id: "approved-repo-assets",
         source_kind: "repos",
-        description: "Approved repository sources and fixture packs for repo, terminal, and CI workflows.",
+        description:
+          "Approved repository sources and fixture packs for repo, terminal, and CI workflows.",
         access_pattern: "local_checkout_and_frozen_fixtures",
       },
       {
         source_id: "approved-ci-logs",
         source_kind: "logs",
-        description: "Approved CI outputs and terminal traces retained for benchmark and verifier evidence.",
+        description:
+          "Approved CI outputs and terminal traces retained for benchmark and verifier evidence.",
         access_pattern: "stored_ci_artifacts_and_replay_bundles",
       },
       {
@@ -132,7 +127,8 @@ function buildStarterProgram(params: {
         metric_id: "held-out-task-success",
         label: "Held-out task success",
         objective: "maximize",
-        target_description: "Improve held-out repo, terminal, and CI task success over the same-model baseline.",
+        target_description:
+          "Improve held-out repo, terminal, and CI task success over the same-model baseline.",
         measurement_method: "paired benchmark deltas on atomic and episode suites",
       },
       {
@@ -146,16 +142,22 @@ function buildStarterProgram(params: {
         metric_id: "grounded-delivery",
         label: "Grounded delivery",
         objective: "maximize",
-        target_description: "Keep final outputs verifier-approved and grounded in declared evidence bundles.",
+        target_description:
+          "Keep final outputs verifier-approved and grounded in declared evidence bundles.",
         measurement_method: "verifier pass-through and false-veto-sensitive review",
       },
     ],
     rights_and_data_policy: {
-      storage_policy: "Persist only approved niche artifacts and traces under the NicheClaw state root.",
-      training_policy: "Train only on inputs that retain explicit rights_to_train and derivative authorization.",
-      benchmark_policy: "Benchmark with held-out, same-model comparable manifests and contamination-audited suites.",
-      retention_policy: "Retain reproducibility artifacts needed for lineage, replay, and release governance.",
-      redaction_policy: "Redact operator secrets, credentials, and non-approved sensitive content before persistence.",
+      storage_policy:
+        "Persist only approved niche artifacts and traces under the NicheClaw state root.",
+      training_policy:
+        "Train only on inputs that retain explicit rights_to_train and derivative authorization.",
+      benchmark_policy:
+        "Benchmark with held-out, same-model comparable manifests and contamination-audited suites.",
+      retention_policy:
+        "Retain reproducibility artifacts needed for lineage, replay, and release governance.",
+      redaction_policy:
+        "Redact operator secrets, credentials, and non-approved sensitive content before persistence.",
       pii_policy: "Do not store or reuse unapproved PII in optimizer or benchmark artifacts.",
       live_trace_reuse_policy:
         "Live traces remain embargoed until contamination checks, rights confirmation, and policy gates clear reuse.",
@@ -187,13 +189,8 @@ export async function nicheInitCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<NicheInitResult> {
   const repoRoot = process.cwd();
-  const anchors = [
-    validateAnchor(repoRoot, "PRD.md"),
-    validateAnchor(repoRoot, "ARCHITECTURE.md"),
-  ];
-  const invalidAnchor = anchors.find(
-    (anchor) => !anchor.exists || !anchor.mentions_nicheclaw,
-  );
+  const anchors = [validateAnchor(repoRoot, "PRD.md"), validateAnchor(repoRoot, "ARCHITECTURE.md")];
+  const invalidAnchor = anchors.find((anchor) => !anchor.exists || !anchor.mentions_nicheclaw);
   if (invalidAnchor) {
     throw new Error(
       `Missing or invalid NicheClaw architecture anchor: ${invalidAnchor.name} (${invalidAnchor.path}).`,

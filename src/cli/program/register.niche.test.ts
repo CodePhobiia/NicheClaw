@@ -2,6 +2,11 @@ import { Command } from "commander";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const nicheInitCommand = vi.fn();
+const nicheCreateCommand = vi.fn();
+const nicheCompileCommand = vi.fn();
+const nicheReadinessCommand = vi.fn();
+const nichePrepareRunCommand = vi.fn();
+const nicheRunCommand = vi.fn();
 const nicheBenchmarkCommand = vi.fn();
 const nicheOptimizeCommand = vi.fn();
 const nicheReleaseCommand = vi.fn();
@@ -16,6 +21,26 @@ const runtime = {
 
 vi.mock("../../commands/niche/init.js", () => ({
   nicheInitCommand,
+}));
+
+vi.mock("../../commands/niche/create.js", () => ({
+  nicheCreateCommand,
+}));
+
+vi.mock("../../commands/niche/compile.js", () => ({
+  nicheCompileCommand,
+}));
+
+vi.mock("../../commands/niche/readiness.js", () => ({
+  nicheReadinessCommand,
+}));
+
+vi.mock("../../commands/niche/prepare-run.js", () => ({
+  nichePrepareRunCommand,
+}));
+
+vi.mock("../../commands/niche/run.js", () => ({
+  nicheRunCommand,
 }));
 
 vi.mock("../../commands/niche/benchmark.js", () => ({
@@ -66,6 +91,11 @@ describe("registerNicheCommands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     nicheInitCommand.mockResolvedValue(undefined);
+    nicheCreateCommand.mockResolvedValue(undefined);
+    nicheCompileCommand.mockResolvedValue(undefined);
+    nicheReadinessCommand.mockResolvedValue(undefined);
+    nichePrepareRunCommand.mockResolvedValue(undefined);
+    nicheRunCommand.mockResolvedValue(undefined);
     nicheBenchmarkCommand.mockResolvedValue(undefined);
     nicheOptimizeCommand.mockResolvedValue(undefined);
     nicheReleaseCommand.mockResolvedValue(undefined);
@@ -107,6 +137,8 @@ describe("registerNicheCommands", () => {
       "./baseline-results.json",
       "--candidate-execution",
       "./candidate-results.json",
+      "--readiness-report",
+      "./readiness.json",
       "--bootstrap-seed",
       "7",
       "--contamination-detected",
@@ -125,11 +157,94 @@ describe("registerNicheCommands", () => {
       suitePath: "./suite.json",
       baselineExecutionPath: "./baseline-results.json",
       candidateExecutionPath: "./candidate-results.json",
+      live: false,
+      readinessReportPath: "./readiness.json",
       bootstrapSeed: 7,
       contaminationDetected: true,
       actualSuiteHash: "abc123",
       actualFixtureVersion: "fixture-v2",
       actualGraderVersion: "grader-v3",
+      json: true,
+    });
+  });
+
+  it("runs niche benchmark live without typed execution bundles", async () => {
+    await runCli([
+      "niche",
+      "benchmark",
+      "--live",
+      "--baseline-manifest",
+      "./baseline.json",
+      "--candidate-manifest",
+      "./candidate.json",
+      "--suite",
+      "./suite.json",
+      "--readiness-report",
+      "./readiness.json",
+      "--json",
+    ]);
+
+    expect(nicheBenchmarkCommand).toHaveBeenCalledWith({
+      baselineManifestPath: "./baseline.json",
+      candidateManifestPath: "./candidate.json",
+      suitePath: "./suite.json",
+      baselineExecutionPath: undefined,
+      candidateExecutionPath: undefined,
+      live: true,
+      readinessReportPath: "./readiness.json",
+      bootstrapSeed: undefined,
+      contaminationDetected: false,
+      actualSuiteHash: undefined,
+      actualFixtureVersion: undefined,
+      actualGraderVersion: undefined,
+      json: true,
+    });
+  });
+
+  it("runs niche create with the stored program input", async () => {
+    await runCli(["niche", "create", "--program", "./niche-program.json", "--json"]);
+
+    expect(nicheCreateCommand).toHaveBeenCalledWith({
+      programPath: "./niche-program.json",
+      json: true,
+    });
+  });
+
+  it("runs niche compile with collected source descriptors", async () => {
+    await runCli([
+      "niche",
+      "compile",
+      "--niche-program-id",
+      "repo-ci-specialist",
+      "--source",
+      "./sources/repo.json",
+      "--source",
+      "./sources/seeds.json",
+      "--version",
+      "compile-v1",
+      "--compiled-at",
+      "2026-03-13T10:00:00.000Z",
+      "--json",
+    ]);
+
+    expect(nicheCompileCommand).toHaveBeenCalledWith({
+      nicheProgramId: "repo-ci-specialist",
+      sourcePaths: ["./sources/repo.json", "./sources/seeds.json"],
+      version: "compile-v1",
+      compiledAt: "2026-03-13T10:00:00.000Z",
+      emitManifests: false,
+      provider: undefined,
+      modelId: undefined,
+      apiMode: undefined,
+      json: true,
+    });
+  });
+
+  it("runs niche readiness for a stored niche program", async () => {
+    await runCli(["niche", "readiness", "--niche-program-id", "repo-ci-specialist", "--json"]);
+
+    expect(nicheReadinessCommand).toHaveBeenCalledWith({
+      nicheProgramId: "repo-ci-specialist",
       json: true,
     });
   });
@@ -165,6 +280,8 @@ describe("registerNicheCommands", () => {
       "evaluation-preparation",
       "--niche-program-id",
       "repo-ci-specialist",
+      "--readiness-report",
+      "./readiness.json",
       "--reward-artifact-id",
       "reward-a",
       "--reward-artifact-id",
@@ -183,6 +300,7 @@ describe("registerNicheCommands", () => {
     expect(nicheOptimizeCommand).toHaveBeenCalledWith({
       jobType: "evaluation-preparation",
       nicheProgramId: "repo-ci-specialist",
+      readinessReportPath: "./readiness.json",
       createdAt: undefined,
       rewardArtifactIds: ["reward-a", "reward-b"],
       promotionEligible: true,
@@ -193,6 +311,7 @@ describe("registerNicheCommands", () => {
       evaluationInputRefPaths: [],
       candidateArtifactRefPaths: ["./candidate-a.json", "./candidate-b.json"],
       benchmarkInputRefPaths: ["./benchmark-a.json"],
+      execute: false,
       json: true,
     });
   });
@@ -205,7 +324,13 @@ describe("registerNicheCommands", () => {
     const help = niche?.helpInformation() ?? "";
 
     expect(help).toContain("init");
+    expect(help).toContain("create");
+    expect(help).toContain("compile");
+    expect(help).toContain("readiness");
+    expect(help).toContain("prepare-run");
+    expect(help).toContain("run");
     expect(help).toContain("benchmark");
+    expect(help).toContain("Run live or typed benchmark comparisons");
     expect(help).toContain("optimize");
     expect(help).toContain("release");
   });

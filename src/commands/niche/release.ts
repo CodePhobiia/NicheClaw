@@ -1,18 +1,14 @@
-import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import type { RuntimeEnv } from "../../runtime.js";
-import { defaultRuntime } from "../../runtime.js";
-import { readRequiredJsonFileStrict } from "../../niche/json.js";
 import {
-  ArtifactRefSchema,
-  BaselineManifestSchema,
-  BenchmarkResultSummarySchema,
-  CandidateManifestSchema,
-  PromotedReleaseMonitorSchema,
-  type ArtifactRef,
-  type BaselineManifest,
-  type BenchmarkResultSummary,
-  type CandidateManifest,
-} from "../../niche/schema/index.js";
+  validateBenchmarkRecordBindingsAgainstInput,
+  getArbitrationArtifact,
+  getBenchmarkArm,
+  getBenchmarkFixtureMetadata,
+  getGraderCalibrationRecord,
+  getGraderArtifact,
+  getGraderSet,
+} from "../../niche/benchmark/index.js";
+import { resolveSpecializationReadiness } from "../../niche/domain/index.js";
+import { readRequiredJsonFileStrict } from "../../niche/json.js";
 import {
   assessPromotedReleaseMonitor,
   createPromotionControllerResult,
@@ -23,12 +19,37 @@ import {
   type ReleasePolicyEvaluation,
 } from "../../niche/release/index.js";
 import type { PromotionControllerResult } from "../../niche/release/promotion-controller.js";
+import { emitNicheLifecycleEvent } from "../../niche/runtime/lifecycle-events.js";
+import {
+  ArtifactRefSchema,
+  BaselineManifestSchema,
+  BenchmarkResultRecordSchema,
+  BenchmarkResultSummarySchema,
+  CandidateManifestSchema,
+  PromotedReleaseMonitorSchema,
+  type ArtifactRef,
+  type BaselineManifest,
+  type BenchmarkResultRecord,
+  type BenchmarkResultSummary,
+  type CandidateManifest,
+} from "../../niche/schema/index.js";
+import {
+  getArtifactRecord,
+  getParentsForArtifact,
+  resolveCompilationArtifacts,
+  resolveManifestArtifacts,
+  resolveBenchmarkArtifacts,
+  resolveBenchmarkRunStorePath,
+} from "../../niche/store/index.js";
 import type { VerifierMetricSummary } from "../../niche/verifier/index.js";
+import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { defaultRuntime } from "../../runtime.js";
 
 export type NicheReleaseOptions = {
-  baselineManifestPath: string;
-  candidateManifestPath: string;
-  benchmarkResultPaths: string[];
+  baselineManifestPath?: string;
+  candidateManifestPath?: string;
+  benchmarkResultPaths?: string[];
   shadowResultPaths?: string[];
   verifierMetricsPath: string;
   monitorDefinitionPath: string;
@@ -40,6 +61,8 @@ export type NicheReleaseOptions = {
   latencyRegression?: number;
   costRegression?: number;
   monitorObservationPath?: string;
+  readinessReportPath?: string;
+  nicheProgramId?: string;
   json?: boolean;
 };
 
@@ -101,10 +124,7 @@ function assertVerifierMetricSummary(value: unknown, label: string): VerifierMet
   };
 }
 
-function assertPromotedMonitorDefinition(
-  value: unknown,
-  label: string,
-): PromotedMonitorDefinition {
+function assertPromotedMonitorDefinition(value: unknown, label: string): PromotedMonitorDefinition {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label}: expected an object.`);
   }
@@ -127,6 +147,12 @@ function assertPromotedMonitorDefinition(
   ) {
     throw new Error(`Invalid ${label}: cadence defaults must be numeric.`);
   }
+  if (
+    !Array.isArray(candidate.monitor.required_case_kinds) ||
+    candidate.monitor.required_case_kinds.length === 0
+  ) {
+    throw new Error(`Invalid ${label}: monitor.required_case_kinds must be a non-empty array.`);
+  }
   return {
     monitor,
     cadence_defaults: {
@@ -146,10 +172,7 @@ function assertPromotedMonitorObservation(
     throw new Error(`Invalid ${label}: expected an object.`);
   }
   const candidate = value as Partial<PromotedMonitorObservation>;
-  if (
-    !candidate.observed_drift ||
-    typeof candidate.consecutive_breach_windows !== "number"
-  ) {
+  if (!candidate.observed_drift || typeof candidate.consecutive_breach_windows !== "number") {
     throw new Error(`Invalid ${label}: missing observed_drift or consecutive_breach_windows.`);
   }
   return {
@@ -159,39 +182,185 @@ function assertPromotedMonitorObservation(
   };
 }
 
-function loadBenchmarkSummaries(
+function loadBenchmarkEvidenceRecords(
   pathnames: string[],
   label: string,
   options: { allowEmpty?: boolean } = {},
-): BenchmarkResultSummary[] {
+): { records: BenchmarkResultRecord[]; summaries: BenchmarkResultSummary[]; issues: string[] } {
   if (pathnames.length === 0) {
     if (options.allowEmpty) {
-      return [];
+      return { records: [], summaries: [], issues: [] };
     }
     throw new Error(`At least one ${label} is required.`);
   }
-  return pathnames.map((pathname) =>
-    validateValue(
-      BenchmarkResultSummarySchema,
-      `niche-cli-release-benchmark-${label}-${pathname}`,
-      readRequiredJsonFileStrict(pathname) as BenchmarkResultSummary,
-      `${label} ${pathname}`,
-    ),
-  );
+  const records: BenchmarkResultRecord[] = [];
+  const summaries: BenchmarkResultSummary[] = [];
+  const issues: string[] = [];
+  for (const pathname of pathnames) {
+    const raw = readRequiredJsonFileStrict(pathname);
+    const recordValidation = validateJsonSchemaValue({
+      schema: BenchmarkResultRecordSchema,
+      cacheKey: `niche-cli-release-benchmark-record-${label}-${pathname}`,
+      value: raw,
+    });
+    if (recordValidation.ok) {
+      const record = raw as BenchmarkResultRecord;
+      records.push(record);
+      summaries.push(record.summary);
+      continue;
+    }
+    const summaryValidation = validateJsonSchemaValue({
+      schema: BenchmarkResultSummarySchema,
+      cacheKey: `niche-cli-release-benchmark-summary-${label}-${pathname}`,
+      value: raw,
+    });
+    if (summaryValidation.ok) {
+      const summary = raw as BenchmarkResultSummary;
+      summaries.push(summary);
+      issues.push(
+        `${label} ${summary.benchmark_result_id} is summary-only JSON; release policy requires stored benchmark result records with durable bindings.`,
+      );
+      continue;
+    }
+    const details = recordValidation.errors.map((error) => error.text).join("; ");
+    throw new Error(`Invalid ${label} ${pathname}: ${details}`);
+  }
+  return { records, summaries, issues };
 }
 
 function loadArtifactRefs(pathnames: string[]): ArtifactRef[] {
   if (pathnames.length === 0) {
     throw new Error("At least one --component-artifact-ref is required.");
   }
-  return pathnames.map((pathname) =>
-    validateValue(
+  return pathnames.map((pathname) => {
+    const ref = validateValue(
       ArtifactRefSchema,
       `niche-cli-release-component-ref-${pathname}`,
       readRequiredJsonFileStrict(pathname) as ArtifactRef,
       `component artifact ref ${pathname}`,
-    ),
-  );
+    );
+    const stored = getArtifactRecord(ref, process.env);
+    if (!stored) {
+      throw new Error(
+        `Component artifact ${ref.artifact_id} is not present in the store and cannot be promoted.`,
+      );
+    }
+    if (getParentsForArtifact(stored.ref.artifact_id, process.env).length === 0) {
+      throw new Error(
+        `Component artifact ${stored.ref.artifact_id} has no authoritative lineage and cannot be promoted.`,
+      );
+    }
+    return stored.ref;
+  });
+}
+
+function validateBenchmarkResultBindings(params: {
+  baselineManifest: BaselineManifest;
+  candidateManifest: CandidateManifest;
+  results: BenchmarkResultRecord[];
+}): string[] {
+  const issues: string[] = [];
+
+  for (const result of params.results) {
+  }
+
+  return [
+    ...issues,
+    ...validateBenchmarkRecordBindingsAgainstInput({
+      baselineManifest: params.baselineManifest,
+      candidateManifest: params.candidateManifest,
+      results: params.results,
+      usageLabel: "release",
+    }),
+  ];
+}
+
+function validateMonitorBinding(params: {
+  baselineManifest: BaselineManifest;
+  candidateManifest: CandidateManifest;
+  promotedMonitor: PromotedMonitorDefinition;
+}): string[] {
+  const issues: string[] = [];
+  if (
+    params.promotedMonitor.monitor.baseline_manifest_id !==
+    params.baselineManifest.baseline_manifest_id
+  ) {
+    issues.push(
+      `Promoted monitor baseline_manifest_id ${params.promotedMonitor.monitor.baseline_manifest_id} does not match ${params.baselineManifest.baseline_manifest_id}.`,
+    );
+  }
+  if (
+    params.promotedMonitor.monitor.candidate_manifest_id !==
+    params.candidateManifest.candidate_manifest_id
+  ) {
+    issues.push(
+      `Promoted monitor candidate_manifest_id ${params.promotedMonitor.monitor.candidate_manifest_id} does not match ${params.candidateManifest.candidate_manifest_id}.`,
+    );
+  }
+  return issues;
+}
+
+function validateGraderGovernance(manifest: BaselineManifest | CandidateManifest): string[] {
+  const issues: string[] = [];
+  const graderSet = getGraderSet(manifest.grader_set_version, process.env);
+  if (!graderSet) {
+    issues.push(
+      `Missing grader set ${manifest.grader_set_version} for manifest ${"baseline_manifest_id" in manifest ? manifest.baseline_manifest_id : manifest.candidate_manifest_id}.`,
+    );
+    return issues;
+  }
+  const arbitration = getArbitrationArtifact(graderSet.arbitration_policy_id, process.env);
+  if (!arbitration) {
+    issues.push(
+      `Missing arbitration artifact ${graderSet.arbitration_policy_id} for grader set ${graderSet.grader_set_id}.`,
+    );
+  }
+  const fixtureMetadata = getBenchmarkFixtureMetadata(graderSet.fixture_metadata_id, process.env);
+  if (!fixtureMetadata) {
+    issues.push(
+      `Missing fixture metadata ${graderSet.fixture_metadata_id} for grader set ${graderSet.grader_set_id}.`,
+    );
+  } else if (fixtureMetadata.benchmark_suite_id !== manifest.benchmark_suite_id) {
+    issues.push(
+      `Fixture metadata ${fixtureMetadata.fixture_metadata_id} targets suite ${fixtureMetadata.benchmark_suite_id}, expected ${manifest.benchmark_suite_id}.`,
+    );
+  }
+  for (const graderRef of graderSet.grader_refs) {
+    if (graderRef.artifact_type !== "grader") {
+      issues.push(
+        `Grader set ${graderSet.grader_set_id} contains non-grader artifact ${graderRef.artifact_id}.`,
+      );
+      continue;
+    }
+    if (!getGraderArtifact(graderRef.artifact_id, process.env)) {
+      issues.push(
+        `Missing grader artifact ${graderRef.artifact_id} referenced by grader set ${graderSet.grader_set_id}.`,
+      );
+      continue;
+    }
+    const calibration = getGraderCalibrationRecord(
+      graderSet.grader_set_id,
+      graderRef.artifact_id,
+      process.env,
+    );
+    if (!calibration) {
+      issues.push(
+        `Missing grader calibration record for ${graderRef.artifact_id} in grader set ${graderSet.grader_set_id}.`,
+      );
+      continue;
+    }
+    if (!calibration.promotion_eligible) {
+      issues.push(
+        `Grader ${graderRef.artifact_id} is not promotion-eligible for grader set ${graderSet.grader_set_id}.`,
+      );
+    }
+    if (calibration.sme_sample_count < calibration.required_sme_sample_count) {
+      issues.push(
+        `Grader ${graderRef.artifact_id} has insufficient SME sampling (${calibration.sme_sample_count}/${calibration.required_sme_sample_count}).`,
+      );
+    }
+  }
+  return issues;
 }
 
 function formatReleaseSummary(result: NicheReleaseResult): string {
@@ -208,9 +377,7 @@ function formatReleaseSummary(result: NicheReleaseResult): string {
     lines.push(`Warnings: ${result.policy_evaluation.warnings.join("; ")}`);
   }
   if (result.monitor_assessment) {
-    lines.push(
-      `Rollback now: ${result.monitor_assessment.should_rollback ? "yes" : "no"}`,
-    );
+    lines.push(`Rollback now: ${result.monitor_assessment.should_rollback ? "yes" : "no"}`);
   }
   return lines.join("\n");
 }
@@ -219,6 +386,39 @@ export async function nicheReleaseCommand(
   opts: NicheReleaseOptions,
   runtime: RuntimeEnv = defaultRuntime,
 ): Promise<NicheReleaseResult> {
+  // Resolve manifest, benchmark, and readiness paths from the program store when --from-program is given
+  if (opts.nicheProgramId) {
+    if (!opts.baselineManifestPath || !opts.candidateManifestPath) {
+      const manifests = resolveManifestArtifacts(opts.nicheProgramId, process.env);
+      opts.baselineManifestPath ??= manifests.baselineManifestPath;
+      opts.candidateManifestPath ??= manifests.candidateManifestPath;
+    }
+    if (!opts.benchmarkResultPaths || opts.benchmarkResultPaths.length === 0) {
+      const benchmarks = resolveBenchmarkArtifacts(opts.nicheProgramId, process.env);
+      opts.benchmarkResultPaths = benchmarks.benchmarkResultRecords.map((r) =>
+        resolveBenchmarkRunStorePath(r.benchmark_result_record_id, process.env),
+      );
+    }
+    if (!opts.readinessReportPath) {
+      const compilation = resolveCompilationArtifacts(opts.nicheProgramId, process.env);
+      opts.readinessReportPath = compilation.readinessReportPath;
+    }
+  }
+  if (!opts.baselineManifestPath) {
+    throw new Error(
+      "--baseline-manifest is required (or use --from-program to resolve it automatically).",
+    );
+  }
+  if (!opts.candidateManifestPath) {
+    throw new Error(
+      "--candidate-manifest is required (or use --from-program to resolve it automatically).",
+    );
+  }
+  if (!opts.benchmarkResultPaths || opts.benchmarkResultPaths.length === 0) {
+    throw new Error(
+      "--benchmark-result is required (or use --from-program to resolve it automatically).",
+    );
+  }
   const baselineManifest = validateValue(
     BaselineManifestSchema,
     "niche-cli-release-baseline-manifest",
@@ -231,10 +431,26 @@ export async function nicheReleaseCommand(
     readRequiredJsonFileStrict(opts.candidateManifestPath) as CandidateManifest,
     "candidate manifest",
   );
-  const benchmarkResults = loadBenchmarkSummaries(opts.benchmarkResultPaths, "benchmark result");
-  const shadowResults = loadBenchmarkSummaries(opts.shadowResultPaths ?? [], "shadow result", {
-    allowEmpty: true,
+  resolveSpecializationReadiness({
+    nicheProgramId: candidateManifest.niche_program_id,
+    readinessReportPath: opts.readinessReportPath,
+    env: process.env,
   });
+  const benchmarkEvidence = loadBenchmarkEvidenceRecords(
+    opts.benchmarkResultPaths,
+    "benchmark result",
+  );
+  const shadowEvidence = loadBenchmarkEvidenceRecords(
+    opts.shadowResultPaths ?? [],
+    "shadow result",
+    {
+      allowEmpty: true,
+    },
+  );
+  const benchmarkResults = benchmarkEvidence.records;
+  const shadowResults = shadowEvidence.records;
+  const benchmarkSummaries = benchmarkEvidence.summaries;
+  const shadowSummaries = shadowEvidence.summaries;
   const verifierMetrics = assertVerifierMetricSummary(
     readRequiredJsonFileStrict(opts.verifierMetricsPath),
     "verifier metrics",
@@ -244,6 +460,22 @@ export async function nicheReleaseCommand(
     "promoted monitor definition",
   );
   const componentArtifactRefs = loadArtifactRefs(opts.componentArtifactRefPaths);
+  const evidenceBindingIssues = [
+    ...benchmarkEvidence.issues,
+    ...shadowEvidence.issues,
+    ...validateGraderGovernance(baselineManifest),
+    ...validateGraderGovernance(candidateManifest),
+    ...validateBenchmarkResultBindings({
+      baselineManifest,
+      candidateManifest,
+      results: [...benchmarkResults, ...shadowResults],
+    }),
+    ...validateMonitorBinding({
+      baselineManifest,
+      candidateManifest,
+      promotedMonitor,
+    }),
+  ];
 
   const policyEvaluation = evaluateReleasePolicy({
     baselineManifest,
@@ -253,26 +485,24 @@ export async function nicheReleaseCommand(
     verifierMetrics,
     latencyRegression: opts.latencyRegression ?? 0,
     costRegression: opts.costRegression ?? 0,
-    postPromotionMonitorConfigured: true,
+    postPromotionMonitorConfigured: evidenceBindingIssues.length === 0,
+    preexistingBlockingReasons: evidenceBindingIssues,
+    requiredCaseKinds: promotedMonitor.monitor.required_case_kinds,
   });
 
   const promotionController = createPromotionControllerResult({
     candidateReleaseId:
-      opts.candidateReleaseId?.trim() ||
-      `${candidateManifest.candidate_manifest_id}-release`,
+      opts.candidateReleaseId?.trim() || `${candidateManifest.candidate_manifest_id}-release`,
     nicheProgramId: candidateManifest.niche_program_id,
     baselineReleaseId:
-      opts.baselineReleaseId?.trim() ||
-      `${baselineManifest.baseline_manifest_id}-baseline-release`,
+      opts.baselineReleaseId?.trim() || `${baselineManifest.baseline_manifest_id}-baseline-release`,
     baselineManifest,
     candidateManifest,
     componentArtifactRefs,
-    benchmarkResults,
-    shadowResults,
-    approvedBy:
-      opts.approvedBy && opts.approvedBy.length > 0 ? opts.approvedBy : ["niche-cli"],
-    rollbackTarget:
-      opts.rollbackTarget?.trim() || baselineManifest.baseline_manifest_id,
+    benchmarkResults: benchmarkSummaries,
+    shadowResults: shadowSummaries,
+    approvedBy: opts.approvedBy && opts.approvedBy.length > 0 ? opts.approvedBy : ["niche-cli"],
+    rollbackTarget: opts.rollbackTarget?.trim() || baselineManifest.baseline_manifest_id,
     policyEvaluation,
   });
 
@@ -292,6 +522,19 @@ export async function nicheReleaseCommand(
     promoted_monitor: promotedMonitor,
     monitor_assessment: monitorAssessment,
   };
+  if (promotionController.decision === "promoted") {
+    void emitNicheLifecycleEvent({
+      event_type: "candidate_promoted",
+      run_id: promotionController.candidate_release.candidate_release_id,
+      niche_program_id: candidateManifest.niche_program_id,
+      baseline_manifest_id: baselineManifest.baseline_manifest_id,
+      candidate_manifest_id: candidateManifest.candidate_manifest_id,
+      payload: {
+        candidate_release_id: promotionController.candidate_release.candidate_release_id,
+        rollback_target: promotionController.candidate_release.rollback_target,
+      },
+    }).catch(() => {});
+  }
 
   runtime.log(opts.json ? JSON.stringify(result, null, 2) : formatReleaseSummary(result));
   return result;

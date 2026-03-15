@@ -13,10 +13,18 @@ import { buildOutboundResultEnvelope } from "../../infra/outbound/envelope.js";
 import {
   formatOutboundPayloadLog,
   type NormalizedOutboundPayload,
+  normalizeReplyPayloadsForDelivery,
   normalizeOutboundPayloads,
   normalizeOutboundPayloadsForJson,
 } from "../../infra/outbound/payloads.js";
 import type { OutboundSessionContext } from "../../infra/outbound/session-context.js";
+import { checkDomainConstraints } from "../../niche/runtime/constraint-enforcer.js";
+import {
+  markNicheFinalEmission,
+  persistPreparedNicheRunArtifacts,
+  persistPreparedNicheRunFailureArtifacts,
+} from "../../niche/runtime/index.js";
+import { buildDomainRepairPrompt } from "../../niche/runtime/repair-guidance.js";
 import { maybeRunNicheVerifierGate } from "../../niche/runtime/verifier-gate.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
@@ -72,6 +80,8 @@ export async function deliverAgentCommandResult(params: {
   opts: AgentCommandOpts;
   outboundSession: OutboundSessionContext | undefined;
   sessionEntry: SessionEntry | undefined;
+  sessionId: string;
+  sessionFile?: string;
   result: RunResult;
   payloads: RunResult["payloads"];
 }) {
@@ -152,96 +162,229 @@ export async function deliverAgentCommandResult(params: {
       runtime.log(message);
     }
   };
+  let gatedPayloads: ReturnType<typeof maybeRunNicheVerifierGate> | null = null;
+  let normalizedReplyPayloads = normalizeReplyPayloadsForDelivery(payloads ?? []);
+  let normalizedPayloads = normalizeOutboundPayloadsForJson(normalizedReplyPayloads);
 
-  if (deliver) {
-    if (isInternalMessageChannel(deliveryChannel)) {
-      const err = new Error(
-        "delivery channel is required: pass --channel/--reply-channel or use a main session with a previous channel",
-      );
-      if (!bestEffortDeliver) {
-        throw err;
-      }
-      logDeliveryError(err);
-    } else if (!isDeliveryChannelKnown) {
-      const err = new Error(`Unknown channel: ${deliveryChannel}`);
-      if (!bestEffortDeliver) {
-        throw err;
-      }
-      logDeliveryError(err);
-    } else if (resolvedTarget && !resolvedTarget.ok) {
-      if (!bestEffortDeliver) {
-        throw resolvedTarget.error;
-      }
-      logDeliveryError(resolvedTarget.error);
+  const persistPreparedRunArtifacts = (emittedToUser: boolean) => {
+    if (!opts.nicheRunSeed || !opts.runId) {
+      return null;
     }
-  }
-
-  const gatedPayloads =
-    maybeRunNicheVerifierGate({
+    return persistPreparedNicheRunArtifacts({
       runId: opts.runId,
-      payloads: payloads ?? [],
-      checkedAt: new Date().toISOString(),
-    })?.delivery_payloads ?? payloads ?? [];
-  const normalizedPayloads = normalizeOutboundPayloadsForJson(gatedPayloads);
-  if (opts.json) {
-    runtime.log(
-      JSON.stringify(
-        buildOutboundResultEnvelope({
-          payloads: normalizedPayloads,
-          meta: result.meta,
-        }),
-        null,
-        2,
-      ),
-    );
+      nicheRunSeed: opts.nicheRunSeed,
+      sessionId: params.sessionId,
+      sessionKey: effectiveSessionKey,
+      transcriptPath: params.sessionFile,
+      resultMeta: result.meta,
+      deliveredPayloads: normalizedReplyPayloads.map((payload) => ({
+        text: payload.text,
+        mediaUrl: payload.mediaUrl,
+        mediaUrls: payload.mediaUrls,
+        isError: payload.isError,
+      })),
+      originalPayloads: (payloads ?? []).map((payload) => ({
+        text: payload.text,
+        mediaUrl: payload.mediaUrl,
+        mediaUrls: payload.mediaUrls,
+        isError: payload.isError,
+      })),
+      suppressedOriginalOutput: gatedPayloads?.suppressed_original_output === true,
+      emittedToUser,
+      deliveredAt: new Date().toISOString(),
+      env: process.env,
+    });
+  };
+  const persistPreparedRunFailureArtifacts = (terminalStatus: "failed" | "aborted") => {
+    if (!opts.nicheRunSeed || !opts.runId) {
+      return null;
+    }
+    const deliveredPayloads =
+      normalizedReplyPayloads.length > 0
+        ? normalizedReplyPayloads
+        : normalizeReplyPayloadsForDelivery(payloads ?? []);
+    return persistPreparedNicheRunFailureArtifacts({
+      runId: opts.runId,
+      nicheRunSeed: opts.nicheRunSeed,
+      sessionId: params.sessionId,
+      sessionKey: effectiveSessionKey,
+      transcriptPath: params.sessionFile,
+      resultMeta: result.meta,
+      deliveredPayloads: deliveredPayloads.map((payload) => ({
+        text: payload.text,
+        mediaUrl: payload.mediaUrl,
+        mediaUrls: payload.mediaUrls,
+        isError: payload.isError,
+      })),
+      originalPayloads: (payloads ?? []).map((payload) => ({
+        text: payload.text,
+        mediaUrl: payload.mediaUrl,
+        mediaUrls: payload.mediaUrls,
+        isError: payload.isError,
+      })),
+      suppressedOriginalOutput: gatedPayloads?.suppressed_original_output === true,
+      terminal_status: terminalStatus,
+      failure_labels: [terminalStatus === "aborted" ? "delivery_aborted" : "delivery_failed"],
+      deliveredAt: new Date().toISOString(),
+      env: process.env,
+    });
+  };
+
+  try {
+    if (deliver) {
+      if (isInternalMessageChannel(deliveryChannel)) {
+        const err = new Error(
+          "delivery channel is required: pass --channel/--reply-channel or use a main session with a previous channel",
+        );
+        if (!bestEffortDeliver) {
+          throw err;
+        }
+        logDeliveryError(err);
+      } else if (!isDeliveryChannelKnown) {
+        const err = new Error(`Unknown channel: ${deliveryChannel}`);
+        if (!bestEffortDeliver) {
+          throw err;
+        }
+        logDeliveryError(err);
+      } else if (resolvedTarget && !resolvedTarget.ok) {
+        if (!bestEffortDeliver) {
+          throw resolvedTarget.error;
+        }
+        logDeliveryError(resolvedTarget.error);
+      }
+    }
+
+    // NicheClaw: check domain constraints before verifier gate.
+    if (opts.runId && payloads?.length) {
+      const combinedText = payloads.map((p) => p.text ?? "").join("\n");
+      const constraintResult = checkDomainConstraints(opts.runId, combinedText);
+      if (!constraintResult.passed) {
+        const blockingViolations = constraintResult.violations.filter((v) => v.blocking);
+        if (blockingViolations.length > 0) {
+          runtime.log(
+            `[niche] constraint violations detected: ${blockingViolations.map((v) => `${v.constraint_id} (${v.severity})`).join(", ")}`,
+          );
+        }
+      }
+    }
+
+    gatedPayloads =
+      maybeRunNicheVerifierGate({
+        runId: opts.runId,
+        payloads: payloads ?? [],
+        checkedAt: new Date().toISOString(),
+      }) ?? null;
+
+    // NicheClaw: build repair guidance when verifier requests repair.
+    if (gatedPayloads && gatedPayloads.action === "repair" && opts.runId) {
+      const repairPrompt = buildDomainRepairPrompt({
+        runId: opts.runId,
+        findings: gatedPayloads.decision.findings.map((f) => ({
+          finding_id: f.finding_id,
+          category: f.category,
+          severity: f.severity,
+          message: f.message,
+        })),
+        originalOutput: payloads?.map((p) => p.text ?? "").join("\n") ?? "",
+      });
+      if (repairPrompt) {
+        (gatedPayloads as any).repairGuidance = repairPrompt;
+      }
+    }
+    const gatedPayloadsToDeliver = gatedPayloads?.delivery_payloads ?? payloads ?? [];
+    normalizedReplyPayloads = normalizeReplyPayloadsForDelivery(gatedPayloadsToDeliver);
+    normalizedPayloads = normalizeOutboundPayloadsForJson(normalizedReplyPayloads);
+    if (opts.json) {
+      runtime.log(
+        JSON.stringify(
+          buildOutboundResultEnvelope({
+            payloads: normalizedPayloads,
+            meta: result.meta,
+          }),
+          null,
+          2,
+        ),
+      );
+      if (!deliver) {
+        if (opts.runId) {
+          markNicheFinalEmission(opts.runId, new Date().toISOString());
+        }
+        persistPreparedRunArtifacts(false);
+        return { payloads: normalizedPayloads, meta: result.meta };
+      }
+    }
+
+    if (normalizedReplyPayloads.length === 0) {
+      if (opts.runId) {
+        markNicheFinalEmission(opts.runId, new Date().toISOString());
+      }
+      if (!opts.json) {
+        runtime.log("No reply from agent.");
+      }
+      persistPreparedRunArtifacts(false);
+      return { payloads: [], meta: result.meta };
+    }
+
+    const deliveryPayloads = normalizeOutboundPayloads(normalizedReplyPayloads);
+    const logPayload = (payload: NormalizedOutboundPayload) => {
+      if (opts.json) {
+        return;
+      }
+      const output = formatOutboundPayloadLog(payload);
+      if (!output) {
+        return;
+      }
+      if (opts.lane === AGENT_LANE_NESTED) {
+        logNestedOutput(runtime, opts, output, effectiveSessionKey);
+        return;
+      }
+      runtime.log(output);
+    };
     if (!deliver) {
+      for (const payload of deliveryPayloads) {
+        logPayload(payload);
+      }
+      if (opts.runId) {
+        markNicheFinalEmission(opts.runId, new Date().toISOString());
+      }
+      persistPreparedRunArtifacts(false);
       return { payloads: normalizedPayloads, meta: result.meta };
     }
-  }
+    let emittedToUser = false;
+    if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel)) {
+      if (deliveryTarget) {
+        await deliverOutboundPayloads({
+          cfg,
+          channel: deliveryChannel,
+          to: deliveryTarget,
+          accountId: resolvedAccountId,
+          payloads: deliveryPayloads,
+          session: outboundSession,
+          replyToId: resolvedReplyToId ?? null,
+          threadId: resolvedThreadTarget ?? null,
+          bestEffort: bestEffortDeliver,
+          onError: (err) => logDeliveryError(err),
+          onPayload: logPayload,
+          deps: createOutboundSendDeps(deps),
+        });
+        emittedToUser = true;
+      }
+    }
 
-  if (gatedPayloads.length === 0) {
-    runtime.log("No reply from agent.");
-    return { payloads: [], meta: result.meta };
-  }
+    if (opts.runId) {
+      markNicheFinalEmission(opts.runId, new Date().toISOString());
+    }
+    persistPreparedRunArtifacts(emittedToUser);
 
-  const deliveryPayloads = normalizeOutboundPayloads(gatedPayloads);
-  const logPayload = (payload: NormalizedOutboundPayload) => {
-    if (opts.json) {
-      return;
+    return { payloads: normalizedPayloads, meta: result.meta };
+  } catch (error) {
+    try {
+      persistPreparedRunFailureArtifacts(
+        result.meta.aborted || opts.abortSignal?.aborted ? "aborted" : "failed",
+      );
+    } catch {
+      // Keep the original delivery error as the surfaced failure.
     }
-    const output = formatOutboundPayloadLog(payload);
-    if (!output) {
-      return;
-    }
-    if (opts.lane === AGENT_LANE_NESTED) {
-      logNestedOutput(runtime, opts, output, effectiveSessionKey);
-      return;
-    }
-    runtime.log(output);
-  };
-  if (!deliver) {
-    for (const payload of deliveryPayloads) {
-      logPayload(payload);
-    }
+    throw error;
   }
-  if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel)) {
-    if (deliveryTarget) {
-      await deliverOutboundPayloads({
-        cfg,
-        channel: deliveryChannel,
-        to: deliveryTarget,
-        accountId: resolvedAccountId,
-        payloads: deliveryPayloads,
-        session: outboundSession,
-        replyToId: resolvedReplyToId ?? null,
-        threadId: resolvedThreadTarget ?? null,
-        bestEffort: bestEffortDeliver,
-        onError: (err) => logDeliveryError(err),
-        onPayload: logPayload,
-        deps: createOutboundSendDeps(deps),
-      });
-    }
-  }
-
-  return { payloads: normalizedPayloads, meta: result.meta };
 }

@@ -1,7 +1,5 @@
-import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import type { RuntimeEnv } from "../../runtime.js";
-import { defaultRuntime } from "../../runtime.js";
 import { readRequiredJsonFileStrict } from "../../niche/json.js";
+import type { PromotedMonitorDefinition } from "../../niche/release/index.js";
 import {
   ArtifactSchema,
   BaselineManifestSchema,
@@ -16,7 +14,9 @@ import {
   type PromotedReleaseMonitor,
   type SourceAccessManifest,
 } from "../../niche/schema/index.js";
-import type { PromotedMonitorDefinition } from "../../niche/release/index.js";
+import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { defaultRuntime } from "../../runtime.js";
 
 export const NICHE_INSPECT_KINDS = [
   "baseline_manifest",
@@ -79,16 +79,11 @@ function assertInspectKind(kind: string): NicheInspectKind {
 
 function describeSummary(summary: Record<string, unknown>): string {
   return Object.entries(summary)
-    .map(([key, value]) =>
-      `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`,
-    )
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
     .join("\n");
 }
 
-function assertPromotedMonitorDefinition(
-  value: unknown,
-  label: string,
-): PromotedMonitorDefinition {
+function assertPromotedMonitorDefinition(value: unknown, label: string): PromotedMonitorDefinition {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label}: expected an object.`);
   }
@@ -110,6 +105,12 @@ function assertPromotedMonitorDefinition(
     typeof cadence.rollback_cooldown_hours !== "number"
   ) {
     throw new Error(`Invalid ${label}: cadence defaults must be numeric.`);
+  }
+  if (
+    !Array.isArray(candidate.monitor.required_case_kinds) ||
+    candidate.monitor.required_case_kinds.length === 0
+  ) {
+    throw new Error(`Invalid ${label}: monitor.required_case_kinds must be a non-empty array.`);
   }
   return {
     monitor,
@@ -177,6 +178,9 @@ export async function nicheInspectCommand(
           action_policy_id: record.action_policy_id,
           retrieval_stack_id: record.retrieval_stack_id,
           verifier_pack_id: record.verifier_pack_id,
+          tool_catalog_version: record.tool_catalog_version,
+          tool_allowlist_count: record.tool_allowlist.length,
+          tool_contract_version: record.tool_contract_version,
           candidate_recipe: record.candidate_recipe,
         },
         record,
@@ -249,7 +253,10 @@ export async function nicheInspectCommand(
           dataset_ref_count: record.dataset_refs.length,
           source_trace_ref_count: record.source_trace_refs.length,
           lineage_count: record.lineage.length,
-          metric_keys: Object.keys(record.metrics).toSorted((left, right) => left.localeCompare(right)),
+          governed_data_status: record.governed_data_status ?? "not_provided",
+          metric_keys: Object.keys(record.metrics).toSorted((left, right) =>
+            left.localeCompare(right),
+          ),
         },
         record,
       };
@@ -273,13 +280,13 @@ export async function nicheInspectCommand(
           promoted_release_id: monitor.promoted_release_id,
           baseline_manifest_id: monitor.baseline_manifest_id,
           candidate_manifest_id: monitor.candidate_manifest_id,
+          required_case_kinds: monitor.required_case_kinds,
           drift_thresholds: monitor.drift_thresholds,
           verifier_drift_thresholds: monitor.verifier_drift_thresholds,
           grader_drift_thresholds: monitor.grader_drift_thresholds,
           shadow_recheck_policy: monitor.shadow_recheck_policy.summary,
           rollback_policy: monitor.rollback_policy.summary,
-          cadence_defaults:
-            "cadence_defaults" in record ? record.cadence_defaults : "not_provided",
+          cadence_defaults: "cadence_defaults" in record ? record.cadence_defaults : "not_provided",
         },
         record,
       };

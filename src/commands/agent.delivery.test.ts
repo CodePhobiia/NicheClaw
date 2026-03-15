@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   deliverOutboundPayloads: vi.fn(async () => []),
   getChannelPlugin: vi.fn(() => ({})),
   resolveOutboundTarget: vi.fn(() => ({ ok: true as const, to: "+15551234567" })),
+  markNicheFinalEmission: vi.fn(),
+  maybeRunNicheVerifierGate: vi.fn(() => null),
+  persistPreparedNicheRunArtifacts: vi.fn(() => null),
+  persistPreparedNicheRunFailureArtifacts: vi.fn(() => null),
 }));
 
 vi.mock("../channels/plugins/index.js", () => ({
@@ -17,6 +21,13 @@ vi.mock("../channels/plugins/index.js", () => ({
 
 vi.mock("../infra/outbound/deliver.js", () => ({
   deliverOutboundPayloads: mocks.deliverOutboundPayloads,
+}));
+
+vi.mock("../niche/runtime/index.js", () => ({
+  markNicheFinalEmission: mocks.markNicheFinalEmission,
+  maybeRunNicheVerifierGate: mocks.maybeRunNicheVerifierGate,
+  persistPreparedNicheRunArtifacts: mocks.persistPreparedNicheRunArtifacts,
+  persistPreparedNicheRunFailureArtifacts: mocks.persistPreparedNicheRunFailureArtifacts,
 }));
 
 vi.mock("../infra/outbound/targets.js", async () => {
@@ -65,6 +76,8 @@ describe("deliverAgentCommandResult", () => {
       opts: params.opts as never,
       outboundSession: params.outboundSession,
       sessionEntry: params.sessionEntry,
+      sessionId: "session-test",
+      sessionFile: undefined,
       result,
       payloads: result.payloads,
     });
@@ -73,8 +86,17 @@ describe("deliverAgentCommandResult", () => {
   }
 
   beforeEach(() => {
-    mocks.deliverOutboundPayloads.mockClear();
-    mocks.resolveOutboundTarget.mockClear();
+    mocks.deliverOutboundPayloads.mockReset();
+    mocks.deliverOutboundPayloads.mockResolvedValue([]);
+    mocks.resolveOutboundTarget.mockReset();
+    mocks.resolveOutboundTarget.mockReturnValue({ ok: true as const, to: "+15551234567" });
+    mocks.markNicheFinalEmission.mockReset();
+    mocks.maybeRunNicheVerifierGate.mockReset();
+    mocks.maybeRunNicheVerifierGate.mockReturnValue(null);
+    mocks.persistPreparedNicheRunArtifacts.mockReset();
+    mocks.persistPreparedNicheRunArtifacts.mockReturnValue(null);
+    mocks.persistPreparedNicheRunFailureArtifacts.mockReset();
+    mocks.persistPreparedNicheRunFailureArtifacts.mockReturnValue(null);
   });
 
   it("prefers explicit accountId for outbound delivery", async () => {
@@ -283,5 +305,30 @@ describe("deliverAgentCommandResult", () => {
     expect(line).toContain("run=run-announce");
     expect(line).toContain("channel=webchat");
     expect(line).toContain("ANNOUNCE_SKIP");
+  });
+
+  it("persists a failed seeded trace before rethrowing delivery errors", async () => {
+    mocks.deliverOutboundPayloads.mockRejectedValueOnce(new Error("network down"));
+
+    await expect(
+      runDelivery({
+        opts: {
+          message: "hello",
+          deliver: true,
+          channel: "whatsapp",
+          to: "+15551234567",
+          runId: "seeded-run-1",
+          nicheRunSeed: { seed_id: "prepared-run-seed-1" },
+        },
+      }),
+    ).rejects.toThrow("network down");
+
+    expect(mocks.persistPreparedNicheRunFailureArtifacts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "seeded-run-1",
+        terminal_status: "failed",
+        failure_labels: ["delivery_failed"],
+      }),
+    );
   });
 });

@@ -2,6 +2,11 @@ import { Command } from "commander";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const nicheInitCommand = vi.fn();
+const nicheCreateCommand = vi.fn();
+const nicheCompileCommand = vi.fn();
+const nicheReadinessCommand = vi.fn();
+const nichePrepareRunCommand = vi.fn();
+const nicheRunCommand = vi.fn();
 const nicheBenchmarkCommand = vi.fn();
 const nicheOptimizeCommand = vi.fn();
 const nicheReleaseCommand = vi.fn();
@@ -16,6 +21,26 @@ const runtime = {
 
 vi.mock("../../commands/niche/init.js", () => ({
   nicheInitCommand,
+}));
+
+vi.mock("../../commands/niche/create.js", () => ({
+  nicheCreateCommand,
+}));
+
+vi.mock("../../commands/niche/compile.js", () => ({
+  nicheCompileCommand,
+}));
+
+vi.mock("../../commands/niche/readiness.js", () => ({
+  nicheReadinessCommand,
+}));
+
+vi.mock("../../commands/niche/prepare-run.js", () => ({
+  nichePrepareRunCommand,
+}));
+
+vi.mock("../../commands/niche/run.js", () => ({
+  nicheRunCommand,
 }));
 
 vi.mock("../../commands/niche/benchmark.js", () => ({
@@ -66,6 +91,11 @@ describe("registerNicheCommands inspect and compare", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     nicheInitCommand.mockResolvedValue(undefined);
+    nicheCreateCommand.mockResolvedValue(undefined);
+    nicheCompileCommand.mockResolvedValue(undefined);
+    nicheReadinessCommand.mockResolvedValue(undefined);
+    nichePrepareRunCommand.mockResolvedValue(undefined);
+    nicheRunCommand.mockResolvedValue(undefined);
     nicheBenchmarkCommand.mockResolvedValue(undefined);
     nicheOptimizeCommand.mockResolvedValue(undefined);
     nicheReleaseCommand.mockResolvedValue(undefined);
@@ -144,7 +174,9 @@ describe("registerNicheCommands inspect and compare", () => {
       "-1",
     ]);
 
-    expect(runtime.error).toHaveBeenCalledWith("--latency-regression must be a non-negative number");
+    expect(runtime.error).toHaveBeenCalledWith(
+      "--latency-regression must be a non-negative number",
+    );
     expect(runtime.exit).toHaveBeenCalledWith(1);
     expect(nicheCompareCommand).not.toHaveBeenCalled();
   });

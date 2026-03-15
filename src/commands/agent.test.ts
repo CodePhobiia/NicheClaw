@@ -13,6 +13,12 @@ import type { OpenClawConfig } from "../config/config.js";
 import * as configModule from "../config/config.js";
 import * as sessionsModule from "../config/sessions.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
+import type { ActiveNicheStackRecord } from "../niche/schema/index.js";
+import {
+  setActiveNicheAgentDefault,
+  upsertActiveNicheStackRecord,
+  writeReadinessReport,
+} from "../niche/store/index.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../test-utils/channel-plugins.js";
@@ -143,6 +149,161 @@ function expectLastRunProviderModel(provider: string, model: string): void {
 
 function readSessionStore<T>(storePath: string): Record<string, T> {
   return JSON.parse(fs.readFileSync(storePath, "utf-8")) as Record<string, T>;
+}
+
+function makeReadyReadinessReport(nicheProgramId: string) {
+  return {
+    readiness_report_id: `${nicheProgramId}-readiness`,
+    niche_program_id: nicheProgramId,
+    status: "ready" as const,
+    dimension_scores: {
+      source_quality: { score: 95, rationale: "Runtime stack inputs are ready." },
+      source_coverage: { score: 94, rationale: "Coverage is sufficient." },
+      contradiction_rate: { score: 3, rationale: "Contradictions are low." },
+      freshness: { score: 93, rationale: "Inputs are current." },
+      rights_sufficiency: { score: 97, rationale: "Rights are approved." },
+      task_observability: { score: 95, rationale: "Runtime behavior is observable." },
+      benchmarkability: { score: 94, rationale: "The niche remains benchmarkable." },
+      measurable_success_criteria: { score: 92, rationale: "Success is measurable." },
+      tool_availability: { score: 96, rationale: "Required tools are available." },
+    },
+    hard_blockers: [],
+    warnings: [],
+    recommended_next_actions: [],
+    generated_at: "2026-03-13T09:00:00.000Z",
+  };
+}
+
+function makeActiveNicheStackRecord(params: {
+  activeStackId: string;
+  candidateManifestId: string;
+  nicheProgramId: string;
+}): ActiveNicheStackRecord {
+  return {
+    active_stack_id: params.activeStackId,
+    niche_program_id: params.nicheProgramId,
+    candidate_manifest_id: params.candidateManifestId,
+    registered_at: "2026-03-13T09:00:00.000Z",
+    release_mode: "live",
+    run_seed_template: {
+      seed_id: `template-${params.activeStackId}`,
+      prepared_at: "2026-03-13T09:00:00.000Z",
+      mode: "live",
+      manifest_kind: "candidate",
+      baseline_or_candidate_manifest_id: params.candidateManifestId,
+      readiness_report_id: `${params.nicheProgramId}-readiness`,
+      niche_program_id: params.nicheProgramId,
+      domain_pack_id: `${params.nicheProgramId}-pack`,
+      domain_pack: {
+        domain_pack_id: `${params.nicheProgramId}-pack`,
+        niche_program_id: params.nicheProgramId,
+        version: "2026.3.13",
+        ontology: {
+          concepts: [{ id: "repo-doc", label: "Repo doc" }],
+          relations: [],
+        },
+        task_taxonomy: [
+          {
+            task_family_id: "repo-ci-verification",
+            label: "Repo CI verification",
+            benchmarkable: true,
+            required_capabilities: ["evidence_grounding"],
+          },
+        ],
+        terminology_map: {},
+        constraints: [
+          {
+            constraint_id: "must-ground-output",
+            category: "grounding",
+            rule: "must_ground_in_evidence",
+            severity: "moderate",
+          },
+        ],
+        tool_contracts: [
+          {
+            tool_name: "exec",
+            intent_summary: "Run repo commands.",
+            required_arguments: ["command"],
+            optional_arguments: [],
+            failure_modes: [],
+          },
+        ],
+        evidence_source_registry: [
+          {
+            source_id: "repo-doc",
+            source_kind: "repos",
+            title: "Repository",
+            access_pattern: "read",
+          },
+        ],
+        failure_taxonomy: [
+          {
+            failure_id: "missing_evidence",
+            label: "Missing evidence",
+            description: "The answer is not grounded.",
+            severity: "high",
+            detection_hints: ["unsupported claim"],
+          },
+        ],
+        verifier_defaults: {
+          required_checks: ["evidence_grounding"],
+          blocking_failure_ids: [],
+          output_requirements: ["grounded_response"],
+          escalation_policy: "Escalate low-confidence responses.",
+        },
+        benchmark_seed_specs: [
+          {
+            seed_id: "seed-1",
+            task_family_id: "repo-ci-verification",
+            prompt: "Investigate the failing benchmark case.",
+            source_refs: ["repo-doc"],
+            pass_conditions: ["grounded_response"],
+            hard_fail_conditions: [],
+          },
+        ],
+      },
+      source_access_manifest: {
+        source_access_manifest_id: `${params.nicheProgramId}-source-access`,
+        allowed_tools: ["exec"],
+        allowed_retrieval_indices: ["repo-doc"],
+        allowed_live_sources: [],
+        disallowed_sources: [],
+        sandbox_policy: "workspace-only",
+        network_policy: "deny",
+        approval_policy: "never",
+      },
+      action_policy_runtime: {
+        allowed_tools: ["exec"],
+        required_arguments_by_tool: {
+          exec: ["command"],
+        },
+      },
+      verifier_pack_config: {
+        verifier_pack_id: `${params.nicheProgramId}-verifier-pack`,
+        version: "2026.3.13",
+        required_checks: ["evidence_grounding"],
+        blocking_failure_ids: [],
+        output_requirements: ["grounded_response"],
+        escalation_policy: "Escalate low-confidence responses.",
+        min_confidence: 0.6,
+        max_allowed_ungrounded_claims: 0,
+        require_evidence_bundles: true,
+      },
+      planner_version_id: "planner-primary-v1",
+      action_policy_version_id: "action-policy-v1",
+      verifier_pack_version_id: "verifier-pack-v1",
+      retrieval_stack_version_id: "retrieval-stack-v1",
+      grader_set_version_id: "grader-set-v1",
+      runtime_snapshot_id: `${params.activeStackId}-runtime`,
+      context_bundle_id: `${params.activeStackId}-context`,
+      determinism_policy_id: `${params.activeStackId}-determinism`,
+      random_seed: `seed-${params.activeStackId}`,
+      replayability_status: "non_replayable",
+      determinism_notes: `Runtime template for ${params.activeStackId}.`,
+      artifact_refs: [],
+      evidence_bundle_refs: [],
+    },
+  };
 }
 
 async function withCrossAgentResumeFixture(
@@ -378,6 +539,69 @@ describe("agentCommand", () => {
       const callArgs = vi.mocked(runEmbeddedPiAgent).mock.calls.at(-1)?.[0];
       expect(callArgs?.thinkLevel).toBe("high");
       expect(callArgs?.verboseLevel).toBe("on");
+    });
+  });
+
+  it("auto-activates the agent default Niche stack and persists the resolved session state", async () => {
+    await withTempHome(async (home) => {
+      const store = path.join(home, "sessions.json");
+      const sessionKey = "agent:main:main";
+      writeSessionStoreSeed(store, {
+        [sessionKey]: {
+          sessionId: "session-niche",
+          updatedAt: Date.now(),
+        },
+      });
+      mockConfig(home, store);
+      writeReadinessReport(makeReadyReadinessReport("repo-ci-specialist"), process.env);
+      upsertActiveNicheStackRecord(
+        makeActiveNicheStackRecord({
+          activeStackId: "active-stack-main",
+          candidateManifestId: "candidate-manifest-repo-ci",
+          nicheProgramId: "repo-ci-specialist",
+        }),
+        process.env,
+      );
+      setActiveNicheAgentDefault(
+        {
+          agent_id: "main",
+          active_stack_id: "active-stack-main",
+          updated_at: "2026-03-13T09:01:00.000Z",
+        },
+        process.env,
+      );
+      deliverAgentCommandResultSpy.mockResolvedValueOnce({
+        payloads: [{ text: "ok" }],
+        meta: { durationMs: 5 },
+      } as never);
+
+      await agentCommand({ message: "hi", sessionKey }, runtime);
+
+      expect(getLastEmbeddedCall()?.nicheRunSeed).toEqual(
+        expect.objectContaining({
+          active_stack_id: "active-stack-main",
+          resolution_source: "agent_default",
+          baseline_or_candidate_manifest_id: "candidate-manifest-repo-ci",
+          resolved_release_mode: "live",
+        }),
+      );
+
+      const saved = readSessionStore<{
+        niche?: {
+          lastResolvedStackId?: string;
+          lastResolvedSource?: string;
+          lastResolvedCandidateManifestId?: string;
+          lastResolvedNicheProgramId?: string;
+        };
+      }>(store);
+      expect(saved[sessionKey]?.niche).toEqual(
+        expect.objectContaining({
+          lastResolvedStackId: "active-stack-main",
+          lastResolvedSource: "agent_default",
+          lastResolvedCandidateManifestId: "candidate-manifest-repo-ci",
+          lastResolvedNicheProgramId: "repo-ci-specialist",
+        }),
+      );
     });
   });
 

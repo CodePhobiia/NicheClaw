@@ -2,6 +2,7 @@ import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import type { ClientToolDefinition } from "../../agents/pi-embedded-runner/run/params.js";
 import type { SpawnedRunMetadata } from "../../agents/spawned-context.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
+import type { PreparedNicheRunSeed } from "../../niche/schema/index.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
 /** Image content block for Claude API multimodal messages. */
@@ -76,13 +77,14 @@ export type AgentCommandOpts = {
   extraSystemPrompt?: string;
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;
+  nicheRunSeed?: PreparedNicheRunSeed;
   /** Per-call stream param overrides (best-effort). */
   streamParams?: AgentStreamParams;
   /** Explicit workspace directory override (for subagents to inherit parent workspace). */
   workspaceDir?: SpawnedRunMetadata["workspaceDir"];
 };
 
-export type AgentCommandIngressOpts = Omit<AgentCommandOpts, "senderIsOwner"> & {
+export type AgentCommandIngressOpts = Omit<AgentCommandOpts, "senderIsOwner" | "nicheRunSeed"> & {
   /** Ingress callsites must always pass explicit owner authorization state. */
   senderIsOwner: boolean;
 };

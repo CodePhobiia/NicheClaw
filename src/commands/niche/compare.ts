@@ -1,24 +1,38 @@
-import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import type { RuntimeEnv } from "../../runtime.js";
-import { defaultRuntime } from "../../runtime.js";
+import {
+  AtomicBenchmarkSuiteRecordSchema,
+  EpisodeBenchmarkSuiteRecordSchema,
+  validateBenchmarkRecordBindingsAgainstInput,
+  getArbitrationArtifact,
+  getBenchmarkArm,
+  getBenchmarkFixtureMetadata,
+  getGraderCalibrationRecord,
+  getGraderArtifact,
+  getGraderSet,
+  type AtomicBenchmarkSuiteRecord,
+  type EpisodeBenchmarkSuiteRecord,
+} from "../../niche/benchmark/index.js";
 import { readRequiredJsonFileStrict } from "../../niche/json.js";
 import {
+  evaluateReleasePolicy,
+  type PromotedMonitorDefinition,
+} from "../../niche/release/index.js";
+import type { ReleasePolicyEvaluation } from "../../niche/release/policy-engine.js";
+import {
   BaselineManifestSchema,
+  BenchmarkResultRecordSchema,
   BenchmarkResultSummarySchema,
   CandidateManifestSchema,
   PromotedReleaseMonitorSchema,
   getManifestComparisonIssues,
   type BaselineManifest,
+  type BenchmarkResultRecord,
   type BenchmarkResultSummary,
   type CandidateManifest,
 } from "../../niche/schema/index.js";
-import {
-  AtomicBenchmarkSuiteRecordSchema,
-  EpisodeBenchmarkSuiteRecordSchema,
-} from "../../niche/benchmark/index.js";
-import { evaluateReleasePolicy, type PromotedMonitorDefinition } from "../../niche/release/index.js";
-import type { ReleasePolicyEvaluation } from "../../niche/release/policy-engine.js";
 import type { VerifierMetricSummary } from "../../niche/verifier/index.js";
+import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { defaultRuntime } from "../../runtime.js";
 
 export type NicheCompareOptions = {
   baselineManifestPath: string;
@@ -57,6 +71,7 @@ export type NicheCompareResult = {
     mean_delta: number;
     low_confidence_bound: number;
   };
+  governance_issues: string[];
   release_policy?: ReleasePolicyEvaluation;
   promoted_monitor?: PromotedMonitorDefinition;
 };
@@ -112,10 +127,7 @@ function assertVerifierMetricSummary(value: unknown, label: string): VerifierMet
   };
 }
 
-function assertPromotedMonitorDefinition(
-  value: unknown,
-  label: string,
-): PromotedMonitorDefinition {
+function assertPromotedMonitorDefinition(value: unknown, label: string): PromotedMonitorDefinition {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label}: expected an object.`);
   }
@@ -138,6 +150,12 @@ function assertPromotedMonitorDefinition(
   ) {
     throw new Error(`Invalid ${label}: cadence defaults must be numeric.`);
   }
+  if (
+    !Array.isArray(candidate.monitor.required_case_kinds) ||
+    candidate.monitor.required_case_kinds.length === 0
+  ) {
+    throw new Error(`Invalid ${label}: monitor.required_case_kinds must be a non-empty array.`);
+  }
   return {
     monitor,
     cadence_defaults: {
@@ -149,16 +167,48 @@ function assertPromotedMonitorDefinition(
   };
 }
 
-function loadBenchmarkSummaries(pathnames: string[] | undefined): BenchmarkResultSummary[] {
+function loadBenchmarkEvidence(
+  pathnames: string[] | undefined,
+  label: string,
+): { records: BenchmarkResultRecord[]; summaries: BenchmarkResultSummary[]; issues: string[] } {
   const resolved = pathnames ?? [];
-  return resolved.map((pathname) =>
-    validateValue(
-      BenchmarkResultSummarySchema,
-      `niche-cli-compare-benchmark-${pathname}`,
-      readRequiredJsonFileStrict(pathname) as BenchmarkResultSummary,
-      `benchmark result ${pathname}`,
-    ),
-  );
+  const records: BenchmarkResultRecord[] = [];
+  const summaries: BenchmarkResultSummary[] = [];
+  const issues: string[] = [];
+
+  for (const pathname of resolved) {
+    const raw = readRequiredJsonFileStrict(pathname);
+    const recordValidation = validateJsonSchemaValue({
+      schema: BenchmarkResultRecordSchema,
+      cacheKey: `niche-cli-compare-benchmark-record-${pathname}`,
+      value: raw,
+    });
+    if (recordValidation.ok) {
+      const record = raw as BenchmarkResultRecord;
+      records.push(record);
+      summaries.push(record.summary);
+      continue;
+    }
+
+    const summaryValidation = validateJsonSchemaValue({
+      schema: BenchmarkResultSummarySchema,
+      cacheKey: `niche-cli-compare-benchmark-summary-${pathname}`,
+      value: raw,
+    });
+    if (summaryValidation.ok) {
+      const summary = raw as BenchmarkResultSummary;
+      summaries.push(summary);
+      issues.push(
+        `${label} ${summary.benchmark_result_id} is summary-only JSON; policy comparisons require stored benchmark result records with durable bindings.`,
+      );
+      continue;
+    }
+
+    const details = recordValidation.errors.map((error) => error.text).join("; ");
+    throw new Error(`Invalid ${label} ${pathname}: ${details}`);
+  }
+
+  return { records, summaries, issues };
 }
 
 function loadSuiteMetadata(pathname: string): NicheCompareResult["suite"] {
@@ -169,7 +219,7 @@ function loadSuiteMetadata(pathname: string): NicheCompareResult["suite"] {
     const record = validateValue(
       EpisodeBenchmarkSuiteRecordSchema,
       "niche-cli-compare-episode-suite",
-      raw,
+      raw as EpisodeBenchmarkSuiteRecord,
       `episode suite ${pathname}`,
     );
     return {
@@ -183,7 +233,7 @@ function loadSuiteMetadata(pathname: string): NicheCompareResult["suite"] {
   const record = validateValue(
     AtomicBenchmarkSuiteRecordSchema,
     "niche-cli-compare-atomic-suite",
-    raw,
+    raw as AtomicBenchmarkSuiteRecord,
     `atomic suite ${pathname}`,
   );
   return {
@@ -199,6 +249,115 @@ function average(values: number[]): number {
   return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function validateBenchmarkResultBindings(params: {
+  baselineManifest: BaselineManifest;
+  candidateManifest: CandidateManifest;
+  results: BenchmarkResultRecord[];
+}): string[] {
+  const issues: string[] = [];
+
+  for (const result of params.results) {
+  }
+
+  return [
+    ...issues,
+    ...validateBenchmarkRecordBindingsAgainstInput({
+      baselineManifest: params.baselineManifest,
+      candidateManifest: params.candidateManifest,
+      results: params.results,
+      usageLabel: "policy comparison",
+    }),
+  ];
+}
+
+function validateMonitorBinding(params: {
+  baselineManifest: BaselineManifest;
+  candidateManifest: CandidateManifest;
+  promotedMonitor: PromotedMonitorDefinition;
+}): string[] {
+  const issues: string[] = [];
+  if (
+    params.promotedMonitor.monitor.baseline_manifest_id !==
+    params.baselineManifest.baseline_manifest_id
+  ) {
+    issues.push(
+      `Promoted monitor baseline_manifest_id ${params.promotedMonitor.monitor.baseline_manifest_id} does not match ${params.baselineManifest.baseline_manifest_id}.`,
+    );
+  }
+  if (
+    params.promotedMonitor.monitor.candidate_manifest_id !==
+    params.candidateManifest.candidate_manifest_id
+  ) {
+    issues.push(
+      `Promoted monitor candidate_manifest_id ${params.promotedMonitor.monitor.candidate_manifest_id} does not match ${params.candidateManifest.candidate_manifest_id}.`,
+    );
+  }
+  return issues;
+}
+
+function validateGraderGovernance(manifest: BaselineManifest | CandidateManifest): string[] {
+  const issues: string[] = [];
+  const graderSet = getGraderSet(manifest.grader_set_version, process.env);
+  if (!graderSet) {
+    issues.push(
+      `Missing grader set ${manifest.grader_set_version} for manifest ${"baseline_manifest_id" in manifest ? manifest.baseline_manifest_id : manifest.candidate_manifest_id}.`,
+    );
+    return issues;
+  }
+  const arbitration = getArbitrationArtifact(graderSet.arbitration_policy_id, process.env);
+  if (!arbitration) {
+    issues.push(
+      `Missing arbitration artifact ${graderSet.arbitration_policy_id} for grader set ${graderSet.grader_set_id}.`,
+    );
+  }
+  const fixtureMetadata = getBenchmarkFixtureMetadata(graderSet.fixture_metadata_id, process.env);
+  if (!fixtureMetadata) {
+    issues.push(
+      `Missing fixture metadata ${graderSet.fixture_metadata_id} for grader set ${graderSet.grader_set_id}.`,
+    );
+  } else if (fixtureMetadata.benchmark_suite_id !== manifest.benchmark_suite_id) {
+    issues.push(
+      `Fixture metadata ${fixtureMetadata.fixture_metadata_id} targets suite ${fixtureMetadata.benchmark_suite_id}, expected ${manifest.benchmark_suite_id}.`,
+    );
+  }
+  for (const graderRef of graderSet.grader_refs) {
+    if (graderRef.artifact_type !== "grader") {
+      issues.push(
+        `Grader set ${graderSet.grader_set_id} contains non-grader artifact ${graderRef.artifact_id}.`,
+      );
+      continue;
+    }
+    if (!getGraderArtifact(graderRef.artifact_id, process.env)) {
+      issues.push(
+        `Missing grader artifact ${graderRef.artifact_id} referenced by grader set ${graderSet.grader_set_id}.`,
+      );
+      continue;
+    }
+    const calibration = getGraderCalibrationRecord(
+      graderSet.grader_set_id,
+      graderRef.artifact_id,
+      process.env,
+    );
+    if (!calibration) {
+      issues.push(
+        `Missing grader calibration record for ${graderRef.artifact_id} in grader set ${graderSet.grader_set_id}.`,
+      );
+      continue;
+    }
+    if (!calibration.promotion_eligible) {
+      issues.push(
+        `Grader ${graderRef.artifact_id} is not promotion-eligible for grader set ${graderSet.grader_set_id}.`,
+      );
+    }
+    if (calibration.sme_sample_count < calibration.required_sme_sample_count) {
+      issues.push(
+        `Grader ${graderRef.artifact_id} has insufficient SME sampling (${calibration.sme_sample_count}/${calibration.required_sme_sample_count}).`,
+      );
+    }
+  }
+  return issues;
+}
+
 function formatCompareSummary(result: NicheCompareResult): string {
   const lines = [
     `Baseline manifest: ${result.baseline_manifest_id}`,
@@ -207,7 +366,9 @@ function formatCompareSummary(result: NicheCompareResult): string {
     `Provider metadata quality: baseline=${result.provider_metadata_quality.baseline}, candidate=${result.provider_metadata_quality.candidate}`,
   ];
   if (result.comparison_issues.length > 0) {
-    lines.push(`Comparison issues: ${result.comparison_issues.map((issue) => issue.message).join("; ")}`);
+    lines.push(
+      `Comparison issues: ${result.comparison_issues.map((issue) => issue.message).join("; ")}`,
+    );
   }
   if (result.suite) {
     lines.push(`Suite: ${result.suite.benchmark_suite_id}`);
@@ -216,13 +377,18 @@ function formatCompareSummary(result: NicheCompareResult): string {
   }
   if (result.benchmark_summary) {
     lines.push(`Benchmark mean delta: ${result.benchmark_summary.mean_delta.toFixed(4)}`);
-    lines.push(`Benchmark low confidence bound: ${result.benchmark_summary.low_confidence_bound.toFixed(4)}`);
+    lines.push(
+      `Benchmark low confidence bound: ${result.benchmark_summary.low_confidence_bound.toFixed(4)}`,
+    );
   }
   if (result.release_policy) {
     lines.push(`Release decision: ${result.release_policy.recommended_decision}`);
     if (result.release_policy.warnings.length > 0) {
       lines.push(`Release warnings: ${result.release_policy.warnings.join("; ")}`);
     }
+  }
+  if (result.governance_issues.length > 0) {
+    lines.push(`Governance issues: ${result.governance_issues.join("; ")}`);
   }
   if (result.promoted_monitor) {
     lines.push(
@@ -248,8 +414,12 @@ export async function nicheCompareCommand(
     readRequiredJsonFileStrict(opts.candidateManifestPath) as CandidateManifest,
     "candidate manifest",
   );
-  const benchmarkResults = loadBenchmarkSummaries(opts.benchmarkResultPaths);
-  const shadowResults = loadBenchmarkSummaries(opts.shadowResultPaths);
+  const benchmarkEvidence = loadBenchmarkEvidence(opts.benchmarkResultPaths, "Benchmark result");
+  const shadowEvidence = loadBenchmarkEvidence(opts.shadowResultPaths, "Shadow result");
+  const benchmarkResults = benchmarkEvidence.records;
+  const shadowResults = shadowEvidence.records;
+  const benchmarkSummaries = benchmarkEvidence.summaries;
+  const shadowSummaries = shadowEvidence.summaries;
   const comparisonIssues = getManifestComparisonIssues(baselineManifest, candidateManifest);
   const suite = opts.suitePath ? loadSuiteMetadata(opts.suitePath) : undefined;
   const promotedMonitor = opts.monitorDefinitionPath
@@ -259,24 +429,41 @@ export async function nicheCompareCommand(
       )
     : undefined;
 
+  const governanceIssues = [
+    ...benchmarkEvidence.issues,
+    ...shadowEvidence.issues,
+    ...validateGraderGovernance(baselineManifest),
+    ...validateGraderGovernance(candidateManifest),
+    ...validateBenchmarkResultBindings({
+      baselineManifest,
+      candidateManifest,
+      results: [...benchmarkResults, ...shadowResults],
+    }),
+    ...(promotedMonitor
+      ? validateMonitorBinding({
+          baselineManifest,
+          candidateManifest,
+          promotedMonitor,
+        })
+      : []),
+  ];
+
   let releasePolicy: ReleasePolicyEvaluation | undefined;
-  if (
-    benchmarkResults.length > 0 &&
-    opts.verifierMetricsPath &&
-    promotedMonitor
-  ) {
+  if (benchmarkResults.length > 0 && opts.verifierMetricsPath && promotedMonitor) {
     releasePolicy = evaluateReleasePolicy({
       baselineManifest,
       candidateManifest,
-        benchmarkResults,
-        shadowResults,
-        verifierMetrics: assertVerifierMetricSummary(
-          readRequiredJsonFileStrict(opts.verifierMetricsPath),
-          "verifier metrics",
-        ),
+      benchmarkResults,
+      shadowResults,
+      verifierMetrics: assertVerifierMetricSummary(
+        readRequiredJsonFileStrict(opts.verifierMetricsPath),
+        "verifier metrics",
+      ),
       latencyRegression: opts.latencyRegression ?? 0,
       costRegression: opts.costRegression ?? 0,
-      postPromotionMonitorConfigured: true,
+      postPromotionMonitorConfigured: governanceIssues.length === 0,
+      preexistingBlockingReasons: governanceIssues,
+      requiredCaseKinds: promotedMonitor.monitor.required_case_kinds,
     });
   }
 
@@ -291,26 +478,27 @@ export async function nicheCompareCommand(
     },
     suite,
     benchmark_summary:
-      benchmarkResults.length === 0
+      benchmarkSummaries.length === 0
         ? undefined
         : {
-            benchmark_result_ids: benchmarkResults.map((result) => result.benchmark_result_id),
-            shadow_result_ids: shadowResults.map((result) => result.benchmark_result_id),
-            invalidated_count: [...benchmarkResults, ...shadowResults].filter(
+            benchmark_result_ids: benchmarkSummaries.map((result) => result.benchmark_result_id),
+            shadow_result_ids: shadowSummaries.map((result) => result.benchmark_result_id),
+            invalidated_count: [...benchmarkSummaries, ...shadowSummaries].filter(
               (result) => result.invalidated,
             ).length,
-            contaminated_result_ids: [...benchmarkResults, ...shadowResults]
+            contaminated_result_ids: [...benchmarkSummaries, ...shadowSummaries]
               .filter((result) => result.contamination_audit_summary.contamination_detected)
               .map((result) => result.benchmark_result_id),
             mean_delta: average(
-              benchmarkResults.map((result) => result.paired_delta_summary.mean_delta),
+              benchmarkSummaries.map((result) => result.paired_delta_summary.mean_delta),
             ),
             low_confidence_bound: average(
-              benchmarkResults.map(
+              benchmarkSummaries.map(
                 (result) => result.paired_delta_summary.confidence_interval_low,
               ),
             ),
           },
+    governance_issues: governanceIssues,
     release_policy: releasePolicy,
     promoted_monitor: promotedMonitor,
   };

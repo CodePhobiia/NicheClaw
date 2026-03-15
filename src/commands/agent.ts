@@ -37,7 +37,7 @@ import {
   resolveThinkingDefault,
 } from "../agents/model-selection.js";
 import { prepareSessionManagerForRun } from "../agents/pi-embedded-runner/session-manager-init.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { runEmbeddedPiAgent, type EmbeddedPiRunMeta } from "../agents/pi-embedded.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { normalizeSpawnedRunMetadata } from "../agents/spawned-context.js";
@@ -81,6 +81,15 @@ import {
 } from "../infra/agent-events.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { getRemoteSkillEligibility } from "../infra/skills-remote.js";
+import {
+  assertPreparedNicheRunSeed,
+  assertPreparedSeedReadiness,
+  buildResolvedNicheSessionPatch,
+  clearNicheRunTraceContext,
+  persistPreparedNicheRunFailureArtifacts,
+  safeResolveActiveNicheStackForRun,
+  snapshotNicheRunTraceContext,
+} from "../niche/runtime/index.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { applyVerboseOverride } from "../sessions/level-overrides.js";
@@ -498,7 +507,26 @@ function runAgentAttempt(params: {
     onAgentEvent: params.onAgentEvent,
     bootstrapPromptWarningSignaturesSeen,
     bootstrapPromptWarningSignature,
+    nicheRunSeed: params.opts.nicheRunSeed,
   });
+}
+
+function buildPreparedNicheFailureMeta(params: {
+  sessionId: string;
+  provider: string;
+  model: string;
+  durationMs: number;
+  aborted: boolean;
+}): EmbeddedPiRunMeta {
+  return {
+    durationMs: Math.max(0, params.durationMs),
+    aborted: params.aborted,
+    agentMeta: {
+      sessionId: params.sessionId,
+      provider: params.provider,
+      model: params.model,
+    },
+  };
 }
 
 async function prepareAgentCommandExecution(
@@ -680,6 +708,12 @@ async function agentCommandInternal(
   runtime: RuntimeEnv = defaultRuntime,
   deps: CliDeps = createDefaultDeps(),
 ) {
+  const explicitNicheRunSeed = opts.nicheRunSeed
+    ? assertPreparedNicheRunSeed(opts.nicheRunSeed, "agentCommand nicheRunSeed")
+    : undefined;
+  if (explicitNicheRunSeed) {
+    assertPreparedSeedReadiness(explicitNicheRunSeed, process.env);
+  }
   const prepared = await prepareAgentCommandExecution(opts, runtime);
   const {
     body,
@@ -706,6 +740,52 @@ async function agentCommandInternal(
     acpResolution,
   } = prepared;
   let sessionEntry = prepared.sessionEntry;
+  const runContext = resolveAgentRunContext(opts);
+  const messageChannel = resolveMessageChannel(
+    runContext.messageChannel,
+    opts.replyChannel ?? opts.channel,
+  );
+  const resolvedActiveNicheStack = explicitNicheRunSeed
+    ? null
+    : safeResolveActiveNicheStackForRun({
+        runId,
+        sessionEntry,
+        agentId: sessionAgentId,
+        messageChannel,
+        accountId: runContext.accountId,
+        to: runContext.currentChannelId ?? opts.to,
+        env: process.env,
+      });
+  const nicheRunSeed = explicitNicheRunSeed ?? resolvedActiveNicheStack?.runSeed;
+  if (nicheRunSeed && nicheRunSeed !== explicitNicheRunSeed) {
+    assertPreparedSeedReadiness(nicheRunSeed, process.env);
+  }
+  const effectiveOpts =
+    nicheRunSeed === opts.nicheRunSeed
+      ? opts
+      : {
+          ...opts,
+          nicheRunSeed,
+        };
+  if (sessionStore && sessionKey && nicheRunSeed) {
+    const nichePatch = buildResolvedNicheSessionPatch({
+      existing: sessionEntry,
+      runSeed: nicheRunSeed,
+    });
+    if (nichePatch) {
+      const nextEntry = mergeSessionEntry(sessionEntry, {
+        sessionId,
+        ...nichePatch,
+      });
+      await persistSessionEntry({
+        sessionStore,
+        sessionKey,
+        storePath,
+        entry: nextEntry,
+      });
+      sessionEntry = nextEntry;
+    }
+  }
 
   try {
     if (opts.deliver === true) {
@@ -725,7 +805,7 @@ async function agentCommandInternal(
       throw acpResolution.error;
     }
 
-    if (acpResolution?.kind === "ready" && sessionKey) {
+    if (!nicheRunSeed && acpResolution?.kind === "ready" && sessionKey) {
       const startedAt = Date.now();
       registerAgentRunContext(runId, {
         sessionKey,
@@ -854,9 +934,11 @@ async function agentCommandInternal(
         cfg,
         deps,
         runtime,
-        opts,
+        opts: { ...effectiveOpts, runId },
         outboundSession,
         sessionEntry,
+        sessionId,
+        sessionFile: undefined,
         result,
         payloads,
       });
@@ -1078,141 +1160,180 @@ async function agentCommandInternal(
     const startedAt = Date.now();
     let lifecycleEnded = false;
 
-    let result: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
+    let result: Awaited<ReturnType<typeof runEmbeddedPiAgent>> | undefined;
     let fallbackProvider = provider;
     let fallbackModel = model;
     try {
-      const runContext = resolveAgentRunContext(opts);
-      const messageChannel = resolveMessageChannel(
-        runContext.messageChannel,
-        opts.replyChannel ?? opts.channel,
-      );
-      const spawnedBy = normalizedSpawned.spawnedBy ?? sessionEntry?.spawnedBy;
-      // Keep fallback candidate resolution centralized so session model overrides,
-      // per-agent overrides, and default fallbacks stay consistent across callers.
-      const effectiveFallbacksOverride = resolveEffectiveModelFallbacks({
-        cfg,
-        agentId: sessionAgentId,
-        hasSessionModelOverride: Boolean(storedModelOverride),
-      });
+      try {
+        const spawnedBy = normalizedSpawned.spawnedBy ?? sessionEntry?.spawnedBy;
+        // Keep fallback candidate resolution centralized so session model overrides,
+        // per-agent overrides, and default fallbacks stay consistent across callers.
+        const effectiveFallbacksOverride = resolveEffectiveModelFallbacks({
+          cfg,
+          agentId: sessionAgentId,
+          hasSessionModelOverride: Boolean(storedModelOverride),
+        });
 
-      // Track model fallback attempts so retries on an existing session don't
-      // re-inject the original prompt as a duplicate user message.
-      let fallbackAttemptIndex = 0;
-      const fallbackResult = await runWithModelFallback({
-        cfg,
-        provider,
-        model,
-        runId,
-        agentDir,
-        fallbacksOverride: effectiveFallbacksOverride,
-        run: (providerOverride, modelOverride, runOptions) => {
-          const isFallbackRetry = fallbackAttemptIndex > 0;
-          fallbackAttemptIndex += 1;
-          return runAgentAttempt({
-            providerOverride,
-            modelOverride,
-            cfg,
-            sessionEntry,
-            sessionId,
-            sessionKey,
-            sessionAgentId,
-            sessionFile,
-            workspaceDir,
-            body,
-            isFallbackRetry,
-            resolvedThinkLevel,
-            timeoutMs,
+        // Track model fallback attempts so retries on an existing session don't
+        // re-inject the original prompt as a duplicate user message.
+        let fallbackAttemptIndex = 0;
+        const fallbackResult = await runWithModelFallback({
+          cfg,
+          provider,
+          model,
+          runId,
+          agentDir,
+          fallbacksOverride: effectiveFallbacksOverride,
+          run: (providerOverride, modelOverride, runOptions) => {
+            const isFallbackRetry = fallbackAttemptIndex > 0;
+            fallbackAttemptIndex += 1;
+            return runAgentAttempt({
+              providerOverride,
+              modelOverride,
+              cfg,
+              sessionEntry,
+              sessionId,
+              sessionKey,
+              sessionAgentId,
+              sessionFile,
+              workspaceDir,
+              body,
+              isFallbackRetry,
+              resolvedThinkLevel,
+              timeoutMs,
+              runId,
+              opts: effectiveOpts,
+              runContext,
+              spawnedBy,
+              messageChannel,
+              skillsSnapshot,
+              resolvedVerboseLevel,
+              agentDir,
+              primaryProvider: provider,
+              sessionStore,
+              storePath,
+              allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
+              onAgentEvent: (evt) => {
+                // Track lifecycle end for fallback emission below.
+                if (
+                  evt.stream === "lifecycle" &&
+                  typeof evt.data?.phase === "string" &&
+                  (evt.data.phase === "end" || evt.data.phase === "error")
+                ) {
+                  lifecycleEnded = true;
+                }
+              },
+            });
+          },
+        });
+        result = fallbackResult.result;
+        fallbackProvider = fallbackResult.provider;
+        fallbackModel = fallbackResult.model;
+        if (!lifecycleEnded) {
+          const stopReason = result.meta.stopReason;
+          if (stopReason && stopReason !== "end_turn") {
+            console.error(`[agent] run ${runId} ended with stopReason=${stopReason}`);
+          }
+          emitAgentEvent({
             runId,
-            opts,
-            runContext,
-            spawnedBy,
-            messageChannel,
-            skillsSnapshot,
-            resolvedVerboseLevel,
-            agentDir,
-            primaryProvider: provider,
-            sessionStore,
-            storePath,
-            allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
-            onAgentEvent: (evt) => {
-              // Track lifecycle end for fallback emission below.
-              if (
-                evt.stream === "lifecycle" &&
-                typeof evt.data?.phase === "string" &&
-                (evt.data.phase === "end" || evt.data.phase === "error")
-              ) {
-                lifecycleEnded = true;
-              }
+            stream: "lifecycle",
+            data: {
+              phase: "end",
+              startedAt,
+              endedAt: Date.now(),
+              aborted: result.meta.aborted ?? false,
+              stopReason,
             },
           });
-        },
-      });
-      result = fallbackResult.result;
-      fallbackProvider = fallbackResult.provider;
-      fallbackModel = fallbackResult.model;
-      if (!lifecycleEnded) {
-        const stopReason = result.meta.stopReason;
-        if (stopReason && stopReason !== "end_turn") {
-          console.error(`[agent] run ${runId} ended with stopReason=${stopReason}`);
         }
-        emitAgentEvent({
-          runId,
-          stream: "lifecycle",
-          data: {
-            phase: "end",
-            startedAt,
-            endedAt: Date.now(),
-            aborted: result.meta.aborted ?? false,
-            stopReason,
-          },
+      } catch (err) {
+        if (!lifecycleEnded) {
+          emitAgentEvent({
+            runId,
+            stream: "lifecycle",
+            data: {
+              phase: "error",
+              startedAt,
+              endedAt: Date.now(),
+              error: String(err),
+            },
+          });
+        }
+        throw err;
+      }
+
+      // Update token+model fields in the session store.
+      if (sessionStore && sessionKey && result) {
+        await updateSessionStoreAfterAgentRun({
+          cfg,
+          contextTokensOverride: agentCfg?.contextTokens,
+          sessionId,
+          sessionKey,
+          storePath,
+          sessionStore,
+          defaultProvider: provider,
+          defaultModel: model,
+          fallbackProvider,
+          fallbackModel,
+          result,
         });
       }
+
+      const payloads = result?.payloads ?? [];
+      return await deliverAgentCommandResult({
+        cfg,
+        deps,
+        runtime,
+        opts: { ...effectiveOpts, runId },
+        outboundSession,
+        sessionEntry,
+        sessionId,
+        sessionFile,
+        result: result!,
+        payloads,
+      });
     } catch (err) {
-      if (!lifecycleEnded) {
-        emitAgentEvent({
-          runId,
-          stream: "lifecycle",
-          data: {
-            phase: "error",
-            startedAt,
-            endedAt: Date.now(),
-            error: String(err),
-          },
-        });
+      const traceContext = nicheRunSeed ? snapshotNicheRunTraceContext(runId) : undefined;
+      if (nicheRunSeed && traceContext) {
+        try {
+          const terminalStatus =
+            result?.meta.aborted || opts.abortSignal?.aborted ? "aborted" : "failed";
+          persistPreparedNicheRunFailureArtifacts({
+            runId,
+            nicheRunSeed,
+            sessionId,
+            sessionKey,
+            transcriptPath: sessionFile,
+            resultMeta:
+              result?.meta ??
+              buildPreparedNicheFailureMeta({
+                sessionId,
+                provider: fallbackProvider,
+                model: fallbackModel,
+                durationMs: Date.now() - startedAt,
+                aborted: terminalStatus === "aborted",
+              }),
+            deliveredPayloads: (result?.payloads ?? []).map((payload) => ({
+              text: payload.text,
+              mediaUrl: payload.mediaUrl,
+              mediaUrls: payload.mediaUrls,
+              isError: payload.isError,
+            })),
+            terminal_status: terminalStatus,
+            failure_labels: [result ? "post_run_failed" : "exception_before_delivery"],
+            deliveredAt: new Date().toISOString(),
+            env: process.env,
+          });
+        } catch (persistError) {
+          log.warn(
+            `Niche trace failure persistence failed for ${runId}: ${persistError instanceof Error ? persistError.message : String(persistError)}`,
+          );
+        }
       }
       throw err;
     }
-
-    // Update token+model fields in the session store.
-    if (sessionStore && sessionKey) {
-      await updateSessionStoreAfterAgentRun({
-        cfg,
-        contextTokensOverride: agentCfg?.contextTokens,
-        sessionId,
-        sessionKey,
-        storePath,
-        sessionStore,
-        defaultProvider: provider,
-        defaultModel: model,
-        fallbackProvider,
-        fallbackModel,
-        result,
-      });
-    }
-
-    const payloads = result.payloads ?? [];
-    return await deliverAgentCommandResult({
-      cfg,
-      deps,
-      runtime,
-      opts,
-      outboundSession,
-      sessionEntry,
-      result,
-      payloads,
-    });
   } finally {
+    clearNicheRunTraceContext(runId);
     clearAgentRunContext(runId);
   }
 }

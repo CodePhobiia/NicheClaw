@@ -1,28 +1,31 @@
-import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import type { RuntimeEnv } from "../../runtime.js";
-import { defaultRuntime } from "../../runtime.js";
 import { readRequiredJsonFileStrict } from "../../niche/json.js";
 import {
-  ArtifactRefSchema,
-  CandidateRecipeSchema,
-  type ArtifactRef,
-  type CandidateRecipe,
-} from "../../niche/schema/index.js";
-import {
+  executeCandidateGeneration,
   OPTIMIZER_JOB_TYPES,
   planCandidateGenerationJob,
   planEvaluationPreparationJob,
   planTeacherRolloutJob,
   planVerifierRefreshJob,
   type OptimizerJob,
+  type OptimizerJobExecutionResult,
   type OptimizerJobType,
   type TeacherRolloutRequest,
 } from "../../niche/optimizer/index.js";
+import {
+  ArtifactRefSchema,
+  CandidateRecipeSchema,
+  type ArtifactRef,
+  type CandidateRecipe,
+} from "../../niche/schema/index.js";
+import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { defaultRuntime } from "../../runtime.js";
 
 export type NicheOptimizeOptions = {
   jobType: string;
   nicheProgramId: string;
   createdAt?: string;
+  readinessReportPath?: string;
   rewardArtifactIds?: string[];
   promotionEligible?: boolean;
   candidateRecipePath?: string;
@@ -32,12 +35,14 @@ export type NicheOptimizeOptions = {
   evaluationInputRefPaths?: string[];
   candidateArtifactRefPaths?: string[];
   benchmarkInputRefPaths?: string[];
+  execute?: boolean;
   json?: boolean;
 };
 
 export type NicheOptimizeResult = {
-  preview: true;
+  preview: boolean;
   job: OptimizerJob;
+  execution?: OptimizerJobExecutionResult;
 };
 
 function validateValue<T>(
@@ -88,7 +93,7 @@ function assertTeacherRolloutRequest(value: unknown, label: string): TeacherRoll
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid ${label}: expected an object.`);
   }
-  const candidate = value as Partial<TeacherRolloutRequest>;
+  const candidate = value as Record<string, unknown>;
   if (
     typeof candidate.rollout_request_id !== "string" ||
     typeof candidate.teacher_runtime !== "string" ||
@@ -101,23 +106,39 @@ function assertTeacherRolloutRequest(value: unknown, label: string): TeacherRoll
   ) {
     throw new Error(`Invalid ${label}: missing required teacher rollout request fields.`);
   }
+  // Reject derived fields that must not appear in user-supplied rollout requests
+  const ALLOWED_KEYS = new Set([
+    "rollout_request_id",
+    "teacher_runtime",
+    "objective",
+    "task_family_id",
+    "input_artifact_refs",
+    "max_examples",
+    "rights_state",
+    "embargo_status",
+  ]);
+  const extraKeys = Object.keys(candidate).filter((key) => !ALLOWED_KEYS.has(key));
+  if (extraKeys.length > 0) {
+    throw new Error(
+      `Invalid ${label}: additional properties not allowed: ${extraKeys.join(", ")}.`,
+    );
+  }
   return {
-    rollout_request_id: candidate.rollout_request_id,
-    teacher_runtime: candidate.teacher_runtime,
-    objective: candidate.objective,
-    task_family_id: candidate.task_family_id,
-    input_artifact_refs: candidate.input_artifact_refs.map((ref, index) =>
+    rollout_request_id: candidate.rollout_request_id as string,
+    teacher_runtime: candidate.teacher_runtime as string,
+    objective: candidate.objective as string,
+    task_family_id: candidate.task_family_id as string,
+    input_artifact_refs: (candidate.input_artifact_refs as unknown[]).map((ref, index) =>
       validateValue(
         ArtifactRefSchema,
         `niche-cli-optimize-rollout-ref-${index}`,
         ref,
         `teacher rollout artifact ref ${index}`,
       ),
-    ),
-    max_examples: candidate.max_examples,
-    rights_state: candidate.rights_state,
-    embargo_status: candidate.embargo_status,
-    blocked_reason: candidate.blocked_reason,
+    ) as ArtifactRef[],
+    max_examples: candidate.max_examples as number,
+    rights_state: candidate.rights_state as TeacherRolloutRequest["rights_state"],
+    embargo_status: candidate.embargo_status as TeacherRolloutRequest["embargo_status"],
   };
 }
 
@@ -205,10 +226,7 @@ export async function nicheOptimizeCommand(
         nicheProgramId: opts.nicheProgramId,
         createdAt,
         verifierPackRef: loadArtifactRef(opts.verifierPackRefPath),
-        evaluationInputRefs: loadArtifactRefs(
-          opts.evaluationInputRefPaths,
-          "evaluation input ref",
-        ),
+        evaluationInputRefs: loadArtifactRefs(opts.evaluationInputRefPaths, "evaluation input ref"),
         rewardArtifactIds,
         promotionEligibleFlow: promotionEligible,
         env,
@@ -223,16 +241,28 @@ export async function nicheOptimizeCommand(
           opts.candidateArtifactRefPaths,
           "candidate artifact ref",
         ),
-        benchmarkInputRefs: loadArtifactRefs(
-          opts.benchmarkInputRefPaths,
-          "benchmark input ref",
-        ),
+        benchmarkInputRefs: loadArtifactRefs(opts.benchmarkInputRefPaths, "benchmark input ref"),
         rewardArtifactIds,
         promotionEligibleFlow: promotionEligible,
         env,
       });
       break;
     }
+  }
+
+  if (opts.execute && jobType === "candidate_generation" && job.status === "ready") {
+    if (!opts.candidateRecipePath) {
+      throw new Error("--execute for candidate_generation requires --candidate-recipe.");
+    }
+    const recipe = loadCandidateRecipe(opts.candidateRecipePath);
+    const execution = executeCandidateGeneration({ job, recipe, env });
+    const result: NicheOptimizeResult = {
+      preview: false,
+      job: { ...job, status: execution.status },
+      execution,
+    };
+    runtime.log(opts.json ? JSON.stringify(result, null, 2) : formatOptimizeSummary(result));
+    return result;
   }
 
   const result: NicheOptimizeResult = {

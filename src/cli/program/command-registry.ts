@@ -219,7 +219,8 @@ const coreEntries: CoreCliEntry[] = [
     commands: [
       {
         name: "niche",
-        description: "NicheClaw control plane for niche setup, benchmarking, optimization, and governance",
+        description:
+          "NicheClaw control plane for niche setup, benchmarking, optimization, and governance",
         hasSubcommands: true,
       },
     ],
