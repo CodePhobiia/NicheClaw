@@ -1,5 +1,6 @@
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
+import { NicheStackReleaseModeSchema, NicheStackResolutionSourceSchema } from "./activation.js";
 import { BenchmarkCaseKindSchema } from "./benchmark.js";
 import { IdentifierString, NonEmptyString, TimestampString, stringEnum } from "./common.js";
 import { ArtifactRefSchema } from "./release.js";
@@ -12,11 +13,19 @@ export const REPLAYABILITY_STATUSES = [
 ] as const;
 export const TOOL_CALL_STATUSES = ["started", "completed", "failed"] as const;
 export const VERIFIER_OUTCOMES = ["approved", "repair_requested", "escalated", "vetoed"] as const;
+export const TERMINAL_RUN_STATUSES = [
+  "delivered",
+  "withheld",
+  "no_output",
+  "failed",
+  "aborted",
+] as const;
 
 export const RunTraceModeSchema = stringEnum(RUN_TRACE_MODES);
 export const ReplayabilityStatusSchema = stringEnum(REPLAYABILITY_STATUSES);
 export const ToolCallStatusSchema = stringEnum(TOOL_CALL_STATUSES);
 export const VerifierOutcomeSchema = stringEnum(VERIFIER_OUTCOMES);
+export const TerminalRunStatusSchema = stringEnum(TERMINAL_RUN_STATUSES);
 
 export const SessionReferenceSchema = Type.Object(
   {
@@ -35,12 +44,26 @@ export const PlannerExchangeSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ActionCandidateRankingRecordSchema = Type.Object(
+  {
+    tool_name: NonEmptyString,
+    score: Type.Number(),
+    reason: NonEmptyString,
+    missing_required_arguments: Type.Array(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
 export const ActionProposalRecordSchema = Type.Object(
   {
     proposal_id: IdentifierString,
     selected_tool: NonEmptyString,
     selected_reason: Type.Optional(NonEmptyString),
     guard_decision: Type.Optional(NonEmptyString),
+    guard_failure_reason: Type.Optional(NonEmptyString),
+    selector_score: Type.Optional(Type.Number()),
+    candidate_rankings: Type.Array(ActionCandidateRankingRecordSchema),
+    repair_strategy_id: Type.Optional(IdentifierString),
     attempt_index: Type.Optional(Type.Integer({ minimum: 0 })),
     previous_attempt_ref: Type.Optional(IdentifierString),
   },
@@ -68,11 +91,21 @@ export const ObservationRecordSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const VerifierFindingRecordSchema = Type.Object(
+  {
+    finding_id: IdentifierString,
+    severity: NonEmptyString,
+    message: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
 export const VerifierDecisionRecordSchema = Type.Object(
   {
     decision_id: IdentifierString,
     outcome: VerifierOutcomeSchema,
     rationale: NonEmptyString,
+    findings: Type.Array(VerifierFindingRecordSchema),
   },
   { additionalProperties: false },
 );
@@ -83,6 +116,14 @@ export const FinalOutputRecordSchema = Type.Object(
     output_type: NonEmptyString,
     content_summary: NonEmptyString,
     emitted_to_user: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const SuppressedOutputRecordSchema = Type.Object(
+  {
+    content_summary: NonEmptyString,
+    suppression_reason: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );
@@ -178,13 +219,21 @@ export const RunTraceSchema = Type.Object(
     tool_calls: Type.Array(ToolCallRecordSchema),
     observations: Type.Array(ObservationRecordSchema),
     verifier_decisions: Type.Array(VerifierDecisionRecordSchema),
-    final_output: FinalOutputRecordSchema,
-    usage: UsageSummarySchema,
+    terminal_status: TerminalRunStatusSchema,
+    final_output: Type.Optional(FinalOutputRecordSchema),
+    suppressed_output: Type.Optional(SuppressedOutputRecordSchema),
+    usage: Type.Optional(UsageSummarySchema),
+    usage_unavailable_reason: Type.Optional(NonEmptyString),
     latency: LatencySummarySchema,
-    cost: CostSummarySchema,
+    cost: Type.Optional(CostSummarySchema),
+    cost_unavailable_reason: Type.Optional(NonEmptyString),
     failure_labels: Type.Array(IdentifierString),
     artifact_refs: Type.Array(ArtifactRefSchema),
     baseline_or_candidate_manifest_id: IdentifierString,
+    active_stack_id: Type.Optional(IdentifierString),
+    resolved_stack_source: Type.Optional(NicheStackResolutionSourceSchema),
+    resolved_release_mode: Type.Optional(NicheStackReleaseModeSchema),
+    readiness_report_id: IdentifierString,
     planner_version_id: IdentifierString,
     action_policy_version_id: IdentifierString,
     verifier_pack_version_id: IdentifierString,
@@ -211,13 +260,17 @@ export type RunTraceMode = Static<typeof RunTraceModeSchema>;
 export type ReplayabilityStatus = Static<typeof ReplayabilityStatusSchema>;
 export type ToolCallStatus = Static<typeof ToolCallStatusSchema>;
 export type VerifierOutcome = Static<typeof VerifierOutcomeSchema>;
+export type TerminalRunStatus = Static<typeof TerminalRunStatusSchema>;
 export type SessionReference = Static<typeof SessionReferenceSchema>;
 export type PlannerExchange = Static<typeof PlannerExchangeSchema>;
+export type ActionCandidateRankingRecord = Static<typeof ActionCandidateRankingRecordSchema>;
 export type ActionProposalRecord = Static<typeof ActionProposalRecordSchema>;
 export type ToolCallRecord = Static<typeof ToolCallRecordSchema>;
 export type ObservationRecord = Static<typeof ObservationRecordSchema>;
+export type VerifierFindingRecord = Static<typeof VerifierFindingRecordSchema>;
 export type VerifierDecisionRecord = Static<typeof VerifierDecisionRecordSchema>;
 export type FinalOutputRecord = Static<typeof FinalOutputRecordSchema>;
+export type SuppressedOutputRecord = Static<typeof SuppressedOutputRecordSchema>;
 export type UsageSummary = Static<typeof UsageSummarySchema>;
 export type LatencySummary = Static<typeof LatencySummarySchema>;
 export type CostSummary = Static<typeof CostSummarySchema>;

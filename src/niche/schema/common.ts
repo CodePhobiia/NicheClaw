@@ -85,3 +85,6 @@ export type SourceKind = Static<typeof SourceKindSchema>;
 export type MetricObjective = Static<typeof MetricObjectiveSchema>;
 export type IdLabelDescription = Static<typeof IdLabelDescriptionSchema>;
 export type KeyedMetadataEntry = Static<typeof KeyedMetadataEntrySchema>;
+
+/** Schema version for NicheClaw store layout. Bump major on breaking changes. */
+export const NICHE_SCHEMA_VERSION = "1.0.0";

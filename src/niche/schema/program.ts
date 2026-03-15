@@ -4,6 +4,7 @@ import {
   IdentifierString,
   MetricObjectiveSchema,
   NonEmptyString,
+  OptionalStringListSchema,
   RiskClassSchema,
   SourceKindSchema,
   SpecializationLaneSchema,
@@ -66,6 +67,14 @@ export const RightsAndDataPolicySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const NicheProgramAccessPolicySchema = Type.Object(
+  {
+    readers: OptionalStringListSchema,
+    writers: OptionalStringListSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const NicheProgramSchema = Type.Object(
   {
     niche_program_id: IdentifierString,
@@ -77,6 +86,8 @@ export const NicheProgramSchema = Type.Object(
     allowed_sources: Type.Array(AllowedSourceSchema, { minItems: 1 }),
     success_metrics: Type.Array(SuccessMetricSchema, { minItems: 1 }),
     rights_and_data_policy: RightsAndDataPolicySchema,
+    owner_id: Type.Optional(IdentifierString),
+    access_policy: Type.Optional(NicheProgramAccessPolicySchema),
   },
   { additionalProperties: false },
 );
@@ -86,4 +97,5 @@ export type RuntimeStack = Static<typeof RuntimeStackSchema>;
 export type AllowedSource = Static<typeof AllowedSourceSchema>;
 export type SuccessMetric = Static<typeof SuccessMetricSchema>;
 export type RightsAndDataPolicy = Static<typeof RightsAndDataPolicySchema>;
+export type NicheProgramAccessPolicy = Static<typeof NicheProgramAccessPolicySchema>;
 export type NicheProgram = Static<typeof NicheProgramSchema>;

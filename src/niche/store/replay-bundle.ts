@@ -4,6 +4,7 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   EvidenceBundleRefSchema,
   HashString,
@@ -12,7 +13,6 @@ import {
   ReplayabilityStatusSchema,
   TimestampString,
 } from "../schema/index.js";
-import { readJsonFileStrict } from "../json.js";
 import { resolveNicheStoreRoots } from "./paths.js";
 
 export const ReplayBundleEnvironmentSnapshotSchema = Type.Object(
@@ -42,9 +42,7 @@ export const ReplayBundleRecordSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export type ReplayBundleEnvironmentSnapshot = Static<
-  typeof ReplayBundleEnvironmentSnapshotSchema
->;
+export type ReplayBundleEnvironmentSnapshot = Static<typeof ReplayBundleEnvironmentSnapshotSchema>;
 export type ReplayBundleRecord = Static<typeof ReplayBundleRecordSchema>;
 
 const REPLAY_BUNDLE_CACHE_KEY = "niche-store-replay-bundle";
@@ -98,4 +96,25 @@ export function getReplayBundle(
     return null;
   }
   return assertReplayBundle(raw as ReplayBundleRecord);
+}
+
+export function listReplayBundles(env: NodeJS.ProcessEnv = process.env): ReplayBundleRecord[] {
+  const root = resolveReplayBundleRoot(env);
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => entry.name.replace(/\.json$/u, ""))
+    .toSorted((left, right) => left.localeCompare(right))
+    .map((replayBundleId) => getReplayBundle(replayBundleId, env))
+    .filter((bundle): bundle is ReplayBundleRecord => bundle !== null);
+}
+
+export function getReplayBundleForTrace(
+  traceId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ReplayBundleRecord | null {
+  return listReplayBundles(env).find((bundle) => bundle.trace_id === traceId) ?? null;
 }

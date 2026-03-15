@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
+import { readJsonFileStrict } from "../json.js";
 import {
   BaselineManifestSchema,
   CandidateManifestSchema,
@@ -9,8 +10,24 @@ import {
   type CandidateManifest,
   type SourceAccessManifest,
 } from "../schema/index.js";
-import { readJsonFileStrict } from "../json.js";
-import { resolveManifestStorePath, resolveManifestStoreRoot, type ManifestStoreKind } from "./paths.js";
+import {
+  resolveManifestStorePath,
+  resolveManifestStoreRoot,
+  type ManifestStoreKind,
+} from "./paths.js";
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .toSorted(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 type ManifestByKind = {
   baseline: BaselineManifest;
@@ -50,7 +67,11 @@ function assertManifestValid<T>(kind: ManifestStoreKind, manifest: T): T {
   return manifest;
 }
 
-function readManifest<T>(kind: ManifestStoreKind, manifestId: string, env?: NodeJS.ProcessEnv): T | null {
+function readManifest<T>(
+  kind: ManifestStoreKind,
+  manifestId: string,
+  env?: NodeJS.ProcessEnv,
+): T | null {
   const pathname = resolveManifestStorePath(kind, manifestId, env);
   const raw = readJsonFileStrict(pathname, `${kind} manifest ${manifestId}`);
   if (raw === undefined) {
@@ -107,6 +128,29 @@ export function writeBaselineManifest(
   return writeManifest("baseline", manifest, env);
 }
 
+export function ensureStoredBaselineManifest(
+  manifest: BaselineManifest,
+  env: NodeJS.ProcessEnv = process.env,
+): { path: string; manifest: BaselineManifest } {
+  const validated = assertManifestValid("baseline", manifest);
+  const existing = getBaselineManifest(validated.baseline_manifest_id, env);
+  if (existing) {
+    if (stableStringify(existing) !== stableStringify(validated)) {
+      throw new Error(
+        `Baseline manifest ${validated.baseline_manifest_id} is already stored with different content.`,
+      );
+    }
+    return {
+      path: resolveManifestStorePath("baseline", validated.baseline_manifest_id, env),
+      manifest: existing,
+    };
+  }
+  return {
+    path: writeBaselineManifest(validated, env),
+    manifest: validated,
+  };
+}
+
 export function writeCandidateManifest(
   manifest: CandidateManifest,
   env: NodeJS.ProcessEnv = process.env,
@@ -114,11 +158,57 @@ export function writeCandidateManifest(
   return writeManifest("candidate", manifest, env);
 }
 
+export function ensureStoredCandidateManifest(
+  manifest: CandidateManifest,
+  env: NodeJS.ProcessEnv = process.env,
+): { path: string; manifest: CandidateManifest } {
+  const validated = assertManifestValid("candidate", manifest);
+  const existing = getCandidateManifest(validated.candidate_manifest_id, env);
+  if (existing) {
+    if (stableStringify(existing) !== stableStringify(validated)) {
+      throw new Error(
+        `Candidate manifest ${validated.candidate_manifest_id} is already stored with different content.`,
+      );
+    }
+    return {
+      path: resolveManifestStorePath("candidate", validated.candidate_manifest_id, env),
+      manifest: existing,
+    };
+  }
+  return {
+    path: writeCandidateManifest(validated, env),
+    manifest: validated,
+  };
+}
+
 export function writeSourceAccessManifest(
   manifest: SourceAccessManifest,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return writeManifest("sourceAccess", manifest, env);
+}
+
+export function ensureStoredSourceAccessManifest(
+  manifest: SourceAccessManifest,
+  env: NodeJS.ProcessEnv = process.env,
+): { path: string; manifest: SourceAccessManifest } {
+  const validated = assertManifestValid("sourceAccess", manifest);
+  const existing = getSourceAccessManifest(validated.source_access_manifest_id, env);
+  if (existing) {
+    if (stableStringify(existing) !== stableStringify(validated)) {
+      throw new Error(
+        `Source access manifest ${validated.source_access_manifest_id} is already stored with different content.`,
+      );
+    }
+    return {
+      path: resolveManifestStorePath("sourceAccess", validated.source_access_manifest_id, env),
+      manifest: existing,
+    };
+  }
+  return {
+    path: writeSourceAccessManifest(validated, env),
+    manifest: validated,
+  };
 }
 
 export function getBaselineManifest(
@@ -142,15 +232,11 @@ export function getSourceAccessManifest(
   return readManifest<SourceAccessManifest>("sourceAccess", manifestId, env);
 }
 
-export function listBaselineManifests(
-  env: NodeJS.ProcessEnv = process.env,
-): BaselineManifest[] {
+export function listBaselineManifests(env: NodeJS.ProcessEnv = process.env): BaselineManifest[] {
   return listManifestDirectory<BaselineManifest>("baseline", env);
 }
 
-export function listCandidateManifests(
-  env: NodeJS.ProcessEnv = process.env,
-): CandidateManifest[] {
+export function listCandidateManifests(env: NodeJS.ProcessEnv = process.env): CandidateManifest[] {
   return listManifestDirectory<CandidateManifest>("candidate", env);
 }
 

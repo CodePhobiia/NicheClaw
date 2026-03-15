@@ -93,15 +93,19 @@ const SharedManifestFields = {
   notes: Type.Optional(NonEmptyString),
 } as const;
 
+const ResolvedExecutionPinFields = {
+  tool_catalog_version: NonEmptyString,
+  tool_allowlist: Type.Array(NonEmptyString, { minItems: 1 }),
+  tool_contract_version: NonEmptyString,
+  retrieval_config: Type.Unknown(),
+  verifier_config: Type.Unknown(),
+} as const;
+
 export const BaselineManifestSchema = Type.Object(
   {
     baseline_manifest_id: IdentifierString,
     ...SharedManifestFields,
-    tool_catalog_version: NonEmptyString,
-    tool_allowlist: Type.Array(NonEmptyString, { minItems: 1 }),
-    tool_contract_version: NonEmptyString,
-    retrieval_config: Type.Unknown(),
-    verifier_config: Type.Unknown(),
+    ...ResolvedExecutionPinFields,
   },
   { additionalProperties: false },
 );
@@ -115,6 +119,7 @@ export const CandidateManifestSchema = Type.Object(
     action_policy_id: IdentifierString,
     retrieval_stack_id: IdentifierString,
     verifier_pack_id: IdentifierString,
+    ...ResolvedExecutionPinFields,
     optional_student_model_ids: Type.Array(NonEmptyString),
     candidate_recipe: IdentifierString,
   },
@@ -127,6 +132,7 @@ export const MANIFEST_COMPARISON_ISSUE_CODES = [
   "model_id_mismatch",
   "planner_runtime_mismatch",
   "source_access_mismatch",
+  "execution_invariant_mismatch",
 ] as const;
 export const ManifestComparisonIssueCodeSchema = stringEnum(MANIFEST_COMPARISON_ISSUE_CODES);
 
@@ -148,6 +154,29 @@ export type CandidateManifest = Static<typeof CandidateManifestSchema>;
 export type ManifestProviderMetadataQuality = Static<typeof ManifestProviderMetadataQualitySchema>;
 export type ManifestComparisonIssueCode = Static<typeof ManifestComparisonIssueCodeSchema>;
 export type ManifestComparisonIssue = Static<typeof ManifestComparisonIssueSchema>;
+
+function stableSerializeComparableValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializeComparableValue(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([key, nestedValue]) =>
+          `${JSON.stringify(key)}:${stableSerializeComparableValue(nestedValue)}`,
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function pushExecutionInvariantIssue(issues: ManifestComparisonIssue[], fieldName: string): void {
+  issues.push({
+    code: "execution_invariant_mismatch",
+    message: `Baseline and candidate must use the same ${fieldName} for comparison.`,
+  });
+}
 
 export function getManifestComparisonIssues(
   baseline: BaselineManifest,
@@ -194,6 +223,126 @@ export function getManifestComparisonIssues(
       message:
         "Baseline and candidate must use the same planner_runtime.component_id unless explicitly cross-model.",
     });
+  }
+
+  if (
+    !crossModelAllowed &&
+    baseline.planner_runtime.provider !== candidate.planner_runtime.provider
+  ) {
+    pushExecutionInvariantIssue(issues, "planner_runtime.provider");
+  }
+
+  if (
+    !crossModelAllowed &&
+    baseline.planner_runtime.model_id !== candidate.planner_runtime.model_id
+  ) {
+    pushExecutionInvariantIssue(issues, "planner_runtime.model_id");
+  }
+
+  const invariantComparisons: Array<{
+    fieldName: string;
+    baselineValue: unknown;
+    candidateValue: unknown;
+  }> = [
+    {
+      fieldName: "api_mode",
+      baselineValue: baseline.api_mode,
+      candidateValue: candidate.api_mode,
+    },
+    {
+      fieldName: "planner_runtime.api_mode",
+      baselineValue: baseline.planner_runtime.api_mode,
+      candidateValue: candidate.planner_runtime.api_mode,
+    },
+    {
+      fieldName: "sampling_config",
+      baselineValue: baseline.sampling_config,
+      candidateValue: candidate.sampling_config,
+    },
+    {
+      fieldName: "retry_policy",
+      baselineValue: baseline.retry_policy,
+      candidateValue: candidate.retry_policy,
+    },
+    {
+      fieldName: "token_budget",
+      baselineValue: baseline.token_budget,
+      candidateValue: candidate.token_budget,
+    },
+    {
+      fieldName: "context_budget",
+      baselineValue: baseline.context_budget,
+      candidateValue: candidate.context_budget,
+    },
+    {
+      fieldName: "execution_mode",
+      baselineValue: baseline.execution_mode,
+      candidateValue: candidate.execution_mode,
+    },
+    {
+      fieldName: "grader_set_version",
+      baselineValue: baseline.grader_set_version,
+      candidateValue: candidate.grader_set_version,
+    },
+    {
+      fieldName: "routing_proxy_version",
+      baselineValue: baseline.routing_proxy_version,
+      candidateValue: candidate.routing_proxy_version,
+    },
+    {
+      fieldName: "tool_catalog_version",
+      baselineValue: baseline.tool_catalog_version,
+      candidateValue: candidate.tool_catalog_version,
+    },
+    {
+      fieldName: "tool_allowlist",
+      baselineValue: baseline.tool_allowlist,
+      candidateValue: candidate.tool_allowlist,
+    },
+    {
+      fieldName: "tool_contract_version",
+      baselineValue: baseline.tool_contract_version,
+      candidateValue: candidate.tool_contract_version,
+    },
+    {
+      fieldName: "retrieval_config",
+      baselineValue: baseline.retrieval_config,
+      candidateValue: candidate.retrieval_config,
+    },
+    {
+      fieldName: "verifier_config",
+      baselineValue: baseline.verifier_config,
+      candidateValue: candidate.verifier_config,
+    },
+  ];
+
+  if (!crossModelAllowed) {
+    invariantComparisons.push(
+      {
+        fieldName: "model_snapshot_id",
+        baselineValue: baseline.model_snapshot_id,
+        candidateValue: candidate.model_snapshot_id,
+      },
+      {
+        fieldName: "provider_release_label",
+        baselineValue: baseline.provider_release_label,
+        candidateValue: candidate.provider_release_label,
+      },
+      {
+        fieldName: "api_revision",
+        baselineValue: baseline.api_revision,
+        candidateValue: candidate.api_revision,
+      },
+    );
+  }
+
+  for (const comparison of invariantComparisons) {
+    if (
+      stableSerializeComparableValue(comparison.baselineValue) !==
+      stableSerializeComparableValue(comparison.candidateValue)
+    ) {
+      pushExecutionInvariantIssue(issues, comparison.fieldName);
+    }
   }
 
   return issues;

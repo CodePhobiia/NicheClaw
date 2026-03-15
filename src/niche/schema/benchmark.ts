@@ -7,6 +7,7 @@ import {
   TimestampString,
   stringEnum,
 } from "./common.js";
+import { ManifestProviderMetadataQualitySchema } from "./manifests.js";
 
 export const BENCHMARK_CASE_KINDS = ["atomic_case", "episode_case"] as const;
 export const BENCHMARK_MODES = [
@@ -144,6 +145,7 @@ export const BenchmarkTaskFamilySummarySchema = Type.Object(
     case_count: Type.Integer({ minimum: 0 }),
     score_mean: Type.Number(),
     hard_fail_rate: Type.Number({ minimum: 0 }),
+    mean_delta: Type.Number(),
   },
   { additionalProperties: false },
 );
@@ -157,6 +159,17 @@ export const ContaminationAuditSummarySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const BenchmarkArbitrationOutcomeSummarySchema = Type.Object(
+  {
+    arbitration_policy_id: IdentifierString,
+    unresolved_blocking_conflicts: Type.Boolean(),
+    unresolved_conflict_count: Type.Integer({ minimum: 0 }),
+    blocking_conflict_types: Type.Array(NonEmptyString),
+    summary: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
 export const BenchmarkResultSummarySchema = Type.Object(
   {
     benchmark_result_id: IdentifierString,
@@ -165,7 +178,8 @@ export const BenchmarkResultSummarySchema = Type.Object(
     mode: BenchmarkModeSchema,
     baseline_arm_id: IdentifierString,
     candidate_arm_id: IdentifierString,
-    provider_metadata_quality: Type.Optional(NonEmptyString),
+    baseline_provider_metadata_quality: ManifestProviderMetadataQualitySchema,
+    candidate_provider_metadata_quality: ManifestProviderMetadataQualitySchema,
     primary_metric: IdentifierString,
     case_count: Type.Integer({ minimum: 0 }),
     paired_delta_summary: PairedDeltaSummarySchema,
@@ -173,6 +187,29 @@ export const BenchmarkResultSummarySchema = Type.Object(
     contamination_audit_summary: ContaminationAuditSummarySchema,
     invalidated: Type.Boolean(),
     invalidation_reasons: Type.Array(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const BenchmarkResultRecordSchema = Type.Object(
+  {
+    benchmark_result_record_id: IdentifierString,
+    summary: BenchmarkResultSummarySchema,
+    baseline_manifest_id: IdentifierString,
+    candidate_manifest_id: IdentifierString,
+    baseline_template_manifest_id: Type.Optional(IdentifierString),
+    candidate_template_manifest_id: Type.Optional(IdentifierString),
+    suite_hash: HashString,
+    fixture_version: NonEmptyString,
+    actual_suite_hash: HashString,
+    actual_fixture_version: NonEmptyString,
+    actual_grader_version: Type.Optional(NonEmptyString),
+    case_membership_hash: HashString,
+    run_trace_refs: Type.Array(IdentifierString),
+    replay_bundle_refs: Type.Array(IdentifierString),
+    evidence_bundle_ids: Type.Array(IdentifierString),
+    arbitration_outcome_summary: Type.Optional(BenchmarkArbitrationOutcomeSummarySchema),
+    created_at: TimestampString,
   },
   { additionalProperties: false },
 );
@@ -192,4 +229,8 @@ export type BenchmarkArmIdentifier = Static<typeof BenchmarkArmIdentifierSchema>
 export type PairedDeltaSummary = Static<typeof PairedDeltaSummarySchema>;
 export type BenchmarkTaskFamilySummary = Static<typeof BenchmarkTaskFamilySummarySchema>;
 export type ContaminationAuditSummary = Static<typeof ContaminationAuditSummarySchema>;
+export type BenchmarkArbitrationOutcomeSummary = Static<
+  typeof BenchmarkArbitrationOutcomeSummarySchema
+>;
 export type BenchmarkResultSummary = Static<typeof BenchmarkResultSummarySchema>;
+export type BenchmarkResultRecord = Static<typeof BenchmarkResultRecordSchema>;

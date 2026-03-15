@@ -107,6 +107,23 @@ export const RewardArtifactSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const GraderCalibrationRecordSchema = Type.Object(
+  {
+    grader_id: IdentifierString,
+    grader_set_id: IdentifierString,
+    calibration_suite_id: IdentifierString,
+    precision: Type.Number({ minimum: 0, maximum: 1 }),
+    recall: Type.Number({ minimum: 0, maximum: 1 }),
+    agreement_rate: Type.Number({ minimum: 0, maximum: 1 }),
+    sme_sample_count: Type.Integer({ minimum: 0 }),
+    required_sme_sample_count: Type.Integer({ minimum: 0 }),
+    promotion_eligible: Type.Boolean(),
+    version: VersionString,
+    created_at: TimestampString,
+  },
+  { additionalProperties: false },
+);
+
 export type DataZone = Static<typeof DataZoneSchema>;
 export type GraderType = Static<typeof GraderTypeSchema>;
 export type ArbitrationMode = Static<typeof ArbitrationModeSchema>;
@@ -116,3 +133,4 @@ export type DerivedRightsStatus = Static<typeof DerivedRightsStatusSchema>;
 export type GraderArtifact = Static<typeof GraderArtifactSchema>;
 export type ArbitrationArtifact = Static<typeof ArbitrationArtifactSchema>;
 export type RewardArtifact = Static<typeof RewardArtifactSchema>;
+export type GraderCalibrationRecord = Static<typeof GraderCalibrationRecordSchema>;

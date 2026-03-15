@@ -8,6 +8,7 @@ export {
   MetricObjectiveSchema,
   NICHE_HASH_PATTERN,
   NICHE_IDENTIFIER_PATTERN,
+  NICHE_SCHEMA_VERSION,
   NICHE_VERSION_PATTERN,
   NonEmptyString,
   OptionalStringListSchema,
@@ -38,6 +39,7 @@ export type {
 } from "./common.js";
 export {
   AllowedSourceSchema,
+  NicheProgramAccessPolicySchema,
   NicheProgramSchema,
   RightsAndDataPolicySchema,
   RuntimeComponentSchema,
@@ -47,11 +49,34 @@ export {
 export type {
   AllowedSource,
   NicheProgram,
+  NicheProgramAccessPolicy,
   RightsAndDataPolicy,
   RuntimeComponent,
   RuntimeStack,
   SuccessMetric,
 } from "./program.js";
+export {
+  BenchmarkSeedSourceDescriptorSchema,
+  CompilerBenchmarkSeedHintSchema,
+  LocalFileSourceDescriptorSchema,
+  NormalizedSourceRecordSchema,
+  RepoAssetSourceDescriptorSchema,
+  SourceInputKindSchema,
+  SourceProvenanceSchema,
+  SourceRightsMetadataSchema,
+  StructuredTextSourceDescriptorSchema,
+} from "./source-ingest.js";
+export type {
+  BenchmarkSeedSourceDescriptor,
+  CompilerBenchmarkSeedHint,
+  LocalFileSourceDescriptor,
+  NormalizedSourceRecord,
+  RepoAssetSourceDescriptor,
+  SourceInputKind,
+  SourceProvenance,
+  SourceRightsMetadata,
+  StructuredTextSourceDescriptor,
+} from "./source-ingest.js";
 export {
   BenchmarkSeedSpecSchema,
   DomainConstraintSchema,
@@ -85,10 +110,12 @@ export {
   BENCHMARK_MODES,
   BENCHMARK_SPLITS,
   BenchmarkArmIdentifierSchema,
+  BenchmarkArbitrationOutcomeSummarySchema,
   BenchmarkArmKindSchema,
   BenchmarkCaseKindSchema,
   BenchmarkGraderSpecSchema,
   BenchmarkModeSchema,
+  BenchmarkResultRecordSchema,
   BenchmarkResultSummarySchema,
   BenchmarkSourceModeSchema,
   BenchmarkSplitSchema,
@@ -106,10 +133,12 @@ export {
 } from "./benchmark.js";
 export type {
   BenchmarkArmIdentifier,
+  BenchmarkArbitrationOutcomeSummary,
   BenchmarkArmKind,
   BenchmarkCaseKind,
   BenchmarkGraderSpec,
   BenchmarkMode,
+  BenchmarkResultRecord,
   BenchmarkResultSummary,
   BenchmarkSplit,
   BenchmarkSuiteMetadata,
@@ -122,6 +151,13 @@ export type {
   EvalCase,
   PairedDeltaSummary,
 } from "./benchmark.js";
+export {
+  NICHE_STACK_RELEASE_MODES,
+  NICHE_STACK_RESOLUTION_SOURCES,
+  NicheStackReleaseModeSchema,
+  NicheStackResolutionSourceSchema,
+} from "./activation.js";
+export type { NicheStackReleaseMode, NicheStackResolutionSource } from "./activation.js";
 export {
   areManifestsBenchmarkComparable,
   BaselineManifestSchema,
@@ -179,6 +215,7 @@ export {
   DataZoneSchema,
   DerivedRightsStatusSchema,
   GovernedDataStatusSchema,
+  GraderCalibrationRecordSchema,
   GraderArtifactSchema,
   GraderTypeSchema,
   QUARANTINE_REASONS,
@@ -191,6 +228,7 @@ export type {
   DataZone,
   DerivedRightsStatus,
   GovernedDataStatus,
+  GraderCalibrationRecord,
   GraderArtifact,
   GraderType,
   QuarantineReason,
@@ -198,7 +236,9 @@ export type {
 } from "./governance.js";
 export {
   ArtifactRefSchema,
+  ArtifactGovernedDataStatusSchema,
   ArtifactRightsStateSchema,
+  ArtifactTeacherRolloutAuthoritySchema,
   ArtifactSchema,
   ArtifactTypeSchema,
   CandidateRecipeSchema,
@@ -215,7 +255,9 @@ export {
 export type {
   Artifact,
   ArtifactRef,
+  ArtifactGovernedDataStatus,
   ArtifactRightsState,
+  ArtifactTeacherRolloutAuthority,
   ArtifactType,
   CandidateRecipe,
   CandidateRecipeStep,
@@ -228,6 +270,7 @@ export type {
   PromotedReleaseMonitor,
 } from "./release.js";
 export {
+  ActionCandidateRankingRecordSchema,
   ActionProposalRecordSchema,
   BenchmarkArmReferenceSchema,
   BenchmarkCaseReferenceSchema,
@@ -243,16 +286,21 @@ export {
   RUN_TRACE_MODES,
   RunTraceSchema,
   SessionReferenceSchema,
+  SuppressedOutputRecordSchema,
+  TerminalRunStatusSchema,
+  TERMINAL_RUN_STATUSES,
   ToolCallRecordSchema,
   ToolCallStatusSchema,
   TOOL_CALL_STATUSES,
   TracePhaseTimestampsSchema,
   UsageSummarySchema,
+  VerifierFindingRecordSchema,
   VerifierDecisionRecordSchema,
   VerifierOutcomeSchema,
   VERIFIER_OUTCOMES,
 } from "./trace.js";
 export type {
+  ActionCandidateRankingRecord,
   ActionProposalRecord,
   BenchmarkArmReference,
   BenchmarkCaseReference,
@@ -266,10 +314,55 @@ export type {
   RunTrace,
   RunTraceMode,
   SessionReference,
+  SuppressedOutputRecord,
+  TerminalRunStatus,
   ToolCallRecord,
   ToolCallStatus,
   TracePhaseTimestamps,
   UsageSummary,
+  VerifierFindingRecord,
   VerifierDecisionRecord,
   VerifierOutcome,
 } from "./trace.js";
+export {
+  PreparedNicheActionPolicyRuntimeSchema,
+  PreparedNicheEnvironmentSnapshotSchema,
+  PreparedNicheRunSeedManifestKindSchema,
+  PreparedNicheRunSeedSchema,
+  PreparedVerifierPackConfigSnapshotSchema,
+  PreparedVerifierReleaseGuardrailsSchema,
+} from "./runtime-seed.js";
+export type {
+  PreparedNicheActionPolicyRuntime,
+  PreparedNicheEnvironmentSnapshot,
+  PreparedNicheRunSeed,
+  PreparedNicheRunSeedManifestKind,
+  PreparedVerifierPackConfigSnapshot,
+  PreparedVerifierReleaseGuardrails,
+} from "./runtime-seed.js";
+export {
+  CompiledDomainConfigSchema,
+  ConstraintEnforcementDirectiveSchema as CompiledConstraintEnforcementDirectiveSchema,
+  ExemplarDirectiveSchema as CompiledExemplarDirectiveSchema,
+  FailureIndicatorSchema,
+  ObservationDirectiveSchema as CompiledObservationDirectiveSchema,
+  PlannerDirectivesSchema,
+  RetrievalDirectiveSchema as CompiledRetrievalDirectiveSchema,
+  SignalPatternSchema,
+  ToolDirectiveSchema as CompiledToolDirectiveSchema,
+} from "./compiled-domain-config.js";
+export type { CompiledDomainConfigSchemaType } from "./compiled-domain-config.js";
+export { NicheCompilationRecordSchema } from "./compile-record.js";
+export type { NicheCompilationRecord } from "./compile-record.js";
+export {
+  ActiveNicheAgentDefaultBindingSchema,
+  ActiveNicheRouteOverlaySchema,
+  ActiveNicheRuntimeStateSchema,
+  ActiveNicheStackRecordSchema,
+} from "./runtime-stack.js";
+export type {
+  ActiveNicheAgentDefaultBinding,
+  ActiveNicheRouteOverlay,
+  ActiveNicheRuntimeState,
+  ActiveNicheStackRecord,
+} from "./runtime-stack.js";

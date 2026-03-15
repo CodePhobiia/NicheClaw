@@ -2,8 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import { RunTraceSchema, type ReplayabilityStatus, type RunTrace, type RunTraceMode } from "../schema/index.js";
 import { readJsonFileStrict } from "../json.js";
+import {
+  RunTraceSchema,
+  type ReplayabilityStatus,
+  type RunTrace,
+  type RunTraceMode,
+} from "../schema/index.js";
 import { resolveNicheStoreRoots } from "./paths.js";
 
 const TRACE_STORE_CACHE_KEY = "niche-store-run-trace";
@@ -40,10 +45,7 @@ function resolveTracePath(traceId: string, env: NodeJS.ProcessEnv = process.env)
   return path.join(resolveTraceRoot(env), `${traceId}.json`);
 }
 
-export function appendRunTrace(
-  trace: RunTrace,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+export function appendRunTrace(trace: RunTrace, env: NodeJS.ProcessEnv = process.env): string {
   const validated = assertRunTrace(trace);
   const pathname = resolveTracePath(validated.trace_id, env);
   if (fs.existsSync(pathname)) {
@@ -103,16 +105,10 @@ export function queryRunTraces(
     if (query.mode && trace.mode !== query.mode) {
       return false;
     }
-    if (
-      query.manifestId &&
-      trace.baseline_or_candidate_manifest_id !== query.manifestId
-    ) {
+    if (query.manifestId && trace.baseline_or_candidate_manifest_id !== query.manifestId) {
       return false;
     }
-    if (
-      query.replayabilityStatus &&
-      trace.replayability_status !== query.replayabilityStatus
-    ) {
+    if (query.replayabilityStatus && trace.replayability_status !== query.replayabilityStatus) {
       return false;
     }
     if (
@@ -121,10 +117,7 @@ export function queryRunTraces(
     ) {
       return false;
     }
-    if (
-      query.benchmarkCaseId &&
-      trace.benchmark_case_ref?.case_id !== query.benchmarkCaseId
-    ) {
+    if (query.benchmarkCaseId && trace.benchmark_case_ref?.case_id !== query.benchmarkCaseId) {
       return false;
     }
     return true;

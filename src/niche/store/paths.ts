@@ -14,6 +14,7 @@ export type ManifestStoreKind = keyof typeof MANIFEST_DIRNAMES;
 export type NicheStoreRoots = {
   root: string;
   artifacts: string;
+  audit: string;
   benchmarkRuns: string;
   benchmarkSuites: string;
   domainPacks: string;
@@ -23,6 +24,7 @@ export type NicheStoreRoots = {
   manifests: string;
   monitors: string;
   programs: string;
+  readinessReports: string;
   releases: string;
   replayBundles: string;
   traces: string;
@@ -37,6 +39,7 @@ export function resolveNicheStoreRoots(env: NodeJS.ProcessEnv = process.env): Ni
   return {
     root,
     artifacts: path.join(root, NICHE_STATE_DIRNAMES.artifacts),
+    audit: path.join(root, NICHE_STATE_DIRNAMES.audit),
     benchmarkRuns: path.join(root, NICHE_STATE_DIRNAMES.benchmarkRuns),
     benchmarkSuites: path.join(root, NICHE_STATE_DIRNAMES.benchmarkSuites),
     domainPacks: path.join(root, NICHE_STATE_DIRNAMES.domainPacks),
@@ -46,6 +49,7 @@ export function resolveNicheStoreRoots(env: NodeJS.ProcessEnv = process.env): Ni
     manifests: path.join(root, NICHE_STATE_DIRNAMES.manifests),
     monitors: path.join(root, NICHE_STATE_DIRNAMES.monitors),
     programs: path.join(root, NICHE_STATE_DIRNAMES.programs),
+    readinessReports: path.join(root, NICHE_STATE_DIRNAMES.readinessReports),
     releases: path.join(root, NICHE_STATE_DIRNAMES.releases),
     replayBundles: path.join(root, NICHE_STATE_DIRNAMES.replayBundles),
     traces: path.join(root, NICHE_STATE_DIRNAMES.traces),
@@ -101,4 +105,36 @@ export function resolveLineageStorePath(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return path.join(resolveNicheStoreRoots(env).lineage, `${artifactId}.json`);
+}
+
+export function resolveBenchmarkRunStorePath(
+  benchmarkResultRecordId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveNicheStoreRoots(env).benchmarkRuns, `${benchmarkResultRecordId}.json`);
+}
+
+export function resolveReadinessReportStorePath(
+  readinessReportId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveNicheStoreRoots(env).readinessReports, `${readinessReportId}.json`);
+}
+
+export function resolveActiveNicheRuntimeStatePath(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveNicheStoreRoots(env).releases, "active-stack-state.json");
+}
+
+export function resolveNicheProgramStorePath(
+  nicheProgramId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveNicheStoreRoots(env).programs, `${nicheProgramId}.json`);
+}
+
+export function resolveNicheCompilationRecordStorePath(
+  compilationId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveNicheStoreRoots(env).domainPacks, `${compilationId}.json`);
 }

@@ -1,6 +1,6 @@
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { BenchmarkResultSummarySchema } from "./benchmark.js";
+import { BenchmarkCaseKindSchema, BenchmarkResultSummarySchema } from "./benchmark.js";
 import {
   HashString,
   IdentifierString,
@@ -49,6 +49,27 @@ export const ArtifactRightsStateSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ArtifactGovernedDataStatusSchema = Type.Object(
+  {
+    data_zone: NonEmptyString,
+    retention_policy: NonEmptyString,
+    redaction_status: NonEmptyString,
+    pii_status: NonEmptyString,
+    provenance_status: NonEmptyString,
+    quarantined: Type.Boolean(),
+    quarantine_reason: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const ArtifactTeacherRolloutAuthoritySchema = Type.Object(
+  {
+    embargo_status: stringEnum(["cleared", "blocked"] as const),
+    blocked_reason: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
 export const LineageRefSchema = Type.Object(
   {
     parent_artifact_id: IdentifierString,
@@ -80,6 +101,8 @@ export const ArtifactSchema = Type.Object(
     source_trace_refs: Type.Array(IdentifierString),
     dataset_refs: Type.Array(IdentifierString),
     metrics: Type.Record(Type.String(), Type.Number()),
+    governed_data_status: Type.Optional(ArtifactGovernedDataStatusSchema),
+    teacher_rollout_authority: Type.Optional(ArtifactTeacherRolloutAuthoritySchema),
     created_at: TimestampString,
     lineage: Type.Array(LineageRefSchema),
   },
@@ -174,6 +197,7 @@ export const PromotedReleaseMonitorSchema = Type.Object(
     promoted_release_id: IdentifierString,
     baseline_manifest_id: IdentifierString,
     candidate_manifest_id: IdentifierString,
+    required_case_kinds: Type.Array(BenchmarkCaseKindSchema, { minItems: 1 }),
     shadow_recheck_policy: MonitorPolicySchema,
     drift_thresholds: DriftThresholdSetSchema,
     verifier_drift_thresholds: DriftThresholdSetSchema,
@@ -187,6 +211,8 @@ export const PromotedReleaseMonitorSchema = Type.Object(
 export type ArtifactType = Static<typeof ArtifactTypeSchema>;
 export type CandidateReleaseDecision = Static<typeof CandidateReleaseDecisionSchema>;
 export type ArtifactRightsState = Static<typeof ArtifactRightsStateSchema>;
+export type ArtifactGovernedDataStatus = Static<typeof ArtifactGovernedDataStatusSchema>;
+export type ArtifactTeacherRolloutAuthority = Static<typeof ArtifactTeacherRolloutAuthoritySchema>;
 export type LineageRef = Static<typeof LineageRefSchema>;
 export type ArtifactRef = Static<typeof ArtifactRefSchema>;
 export type Artifact = Static<typeof ArtifactSchema>;

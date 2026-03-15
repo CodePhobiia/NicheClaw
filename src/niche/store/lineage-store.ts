@@ -4,8 +4,8 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { validateJsonSchemaValue } from "../../plugins/schema-validator.js";
-import { IdentifierString, LineageRefSchema, type LineageRef } from "../schema/index.js";
 import { readJsonFileStrict } from "../json.js";
+import { IdentifierString, LineageRefSchema, type LineageRef } from "../schema/index.js";
 import { resolveLineageStorePath, resolveNicheStoreRoots } from "./paths.js";
 
 export const StoredLineageEdgeSchema = Type.Object(
@@ -96,13 +96,13 @@ export function listLineageEdges(env: NodeJS.ProcessEnv = process.env): StoredLi
   return fs
     .readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => path.join(root, entry.name))
-      .toSorted((left, right) => left.localeCompare(right))
-      .flatMap((pathname) => {
-        const raw = readJsonFileStrict(pathname, `lineage record ${pathname}`);
-        if (raw === undefined) {
-          return [];
-        }
+    .map((entry) => path.join(root, entry.name))
+    .toSorted((left, right) => left.localeCompare(right))
+    .flatMap((pathname) => {
+      const raw = readJsonFileStrict(pathname, `lineage record ${pathname}`);
+      if (raw === undefined) {
+        return [];
+      }
       if (!Array.isArray(raw)) {
         throw new Error(`Invalid lineage store payload at ${pathname}.`);
       }
@@ -114,9 +114,7 @@ export function getChildrenForArtifact(
   parentArtifactId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): StoredLineageEdge[] {
-  return listLineageEdges(env).filter(
-    (edge) => edge.parent_artifact_id === parentArtifactId,
-  );
+  return listLineageEdges(env).filter((edge) => edge.parent_artifact_id === parentArtifactId);
 }
 
 export function collectDescendantArtifactIds(
